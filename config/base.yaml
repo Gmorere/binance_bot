@@ -1,0 +1,106 @@
+﻿project:
+  name: "binance_futures_bot"
+  version: "0.1.0"
+  mode: "backtest"
+
+runtime:
+  mode: "backtest"
+  exchange: "binance_usdm"
+  poll_interval_seconds: 15
+  paper_risk_bucket: "normal"
+
+capital:
+  initial_capital: 10000.0
+  quote_asset: "USDT"
+
+symbols:
+  enabled:
+    - "BTCUSDT"
+    - "ETHUSDT"
+    - "SOLUSDT"
+    - "BNBUSDT"
+    - "XRPUSDT"
+
+timeframes:
+  context: "4h"
+  bias: "1h"
+  entry: "15m"
+
+strategy:
+  name: "continuation_breakout_momentum_v1"
+  allowed_setups:
+    - "BREAKOUT"
+    - "PULLBACK"
+
+score_thresholds:
+  min_trade: 70
+  aggressive: 85
+  exceptional: 93
+
+risk:
+  risk_by_score:
+    small: 0.0040
+    normal: 0.0060
+    strong: 0.0085
+    exceptional: 0.0110
+
+  max_open_positions: 3
+
+  max_open_risk:
+    normal: 0.0225
+    offensive: 0.0300
+    absolute: 0.0350
+
+  loss_limits:
+    daily: 0.0200
+    weekly: 0.0500
+
+leverage:
+  BTCUSDT: 8
+  ETHUSDT: 8
+  SOLUSDT: 5
+  BNBUSDT: 5
+  XRPUSDT: 5
+
+position_limits:
+  max_notional_pct:
+    BTCUSDT: 0.60
+    ETHUSDT: 0.60
+    SOLUSDT: 0.35
+    BNBUSDT: 0.35
+    XRPUSDT: 0.35
+
+execution:
+  fee_rate_entry: 0.0004
+  fee_rate_exit: 0.0004
+
+  slippage:
+    BTCUSDT: 0.0002
+    ETHUSDT: 0.0003
+    SOLUSDT: 0.0005
+    BNBUSDT: 0.0005
+    XRPUSDT: 0.0006
+
+filters:
+  min_rr_net: 1.8
+  min_breakout_volume_multiple: 1.0
+  max_consolidation_range_atr_multiple: 1.2
+  max_trigger_candle_atr_multiple: 1.8
+
+data:
+  raw_data_path: "data/raw"
+  processed_data_path: "data/processed"
+  outputs_path: "outputs"
+  refresh_from_binance_rest: false
+  candle_close_grace_seconds: 3
+
+reporting:
+  save_trades_csv: true
+  save_metrics_json: true
+  save_equity_chart: true
+
+binance:
+  use_testnet: true
+  recv_window_ms: 5000
+  timeout_seconds: 30
+  market_data_limit: 500

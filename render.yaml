@@ -1,0 +1,27 @@
+﻿services:
+  - type: worker
+    name: binance-futures-bot-paper
+    runtime: docker
+    plan: starter
+    region: oregon
+    numInstances: 1
+    dockerfilePath: ./Dockerfile
+    dockerCommand: python run_paper.py
+    autoDeployTrigger: off
+    disk:
+      name: bot-runtime
+      mountPath: /app/runtime
+      sizeGB: 1
+    envVars:
+      - key: BOT_CONFIG_PATH
+        value: /app/config/render.paper.yaml
+      - key: BOT_BASE_DIR
+        value: /app
+      - key: BOT_RAW_DATA_PATH
+        value: /app/runtime/data/raw
+      - key: BOT_PROCESSED_DATA_PATH
+        value: /app/runtime/data/processed
+      - key: BOT_OUTPUTS_PATH
+        value: /app/runtime/outputs
+      - key: PYTHONUNBUFFERED
+        value: "1"

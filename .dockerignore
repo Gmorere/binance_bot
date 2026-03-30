@@ -1,0 +1,13 @@
+﻿__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.log
+.venv/
+.env
+.git/
+.gitignore
+outputs/
+data/processed/
+data/raw/
+tests/_tmp_*/

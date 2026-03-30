@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env
+outputs/
+data/raw/
+data/processed/temp_downloads/
+tests/_tmp_*/
