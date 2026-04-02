@@ -20,6 +20,13 @@
 
 ## Registro de cambios
 ### 2026-04-02
+- Cambio: cambio de region por default del worker Render de `oregon` a `frankfurt` en [render.yaml](/D:/binance_futures_bot/render.yaml).
+- Motivo: el deploy ya buildaba y arrancaba, pero el runtime en `Oregon, USA` recibia `451` desde `https://fapi.binance.com/fapi/v1/klines`; el problema ya no era el bot sino el egress de una region US contra Binance Futures.
+- Impacto esperado: evitar el bloqueo geografico/regulatorio en paper mode con market data real de Binance Futures.
+- Validacion realizada: log real del worker en Render mostrando `451 Client Error` contra `/fapi/v1/klines` despues de deploy correcto en `Oregon`.
+- Riesgo residual: Render no permite cambiar la region de un servicio existente; para aplicar este fix hay que crear un worker nuevo en `Frankfurt` o recrear el actual.
+
+### 2026-04-02
 - Cambio: ajuste del contenedor cloud a `python:3.12-slim` y restauracion del disco persistente en [render.yaml](/D:/binance_futures_bot/render.yaml) despues de aislar la causa real del deploy fallido.
 - Motivo: el fallo en Render no venia del disco sino del build Docker; `pandas==2.2.3` sobre `python:3.14-slim` estaba cayendo a build desde fuente en vez de wheel precompilada.
 - Impacto esperado: builds mas estables y rapidos en Render sin perder persistencia operativa del worker.

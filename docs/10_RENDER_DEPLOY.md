@@ -18,10 +18,16 @@ Lo que sigue pendiente no es preparar el repo, sino aplicar y validar el worker 
 - un `worker` de Render, no un `web service`,
 - runtime Docker,
 - un solo proceso (`numInstances: 1`),
+- region recomendada actual: `frankfurt`,
 - disco persistente montado en `/app/runtime`,
 - `paper mode` sobre Binance USD-M futures con refresh REST de market data.
 - feed de market data en produccion (`binance.use_testnet_market_data: false`) aunque el path de ordenes siga en testnet.
 - gating research `4h/1h`, restricciones por lado y score dinamico alineados con el `core` actual.
+
+## Region recomendada
+- No conviene desplegar este worker en regiones USA de Render para paper sobre Binance Futures.
+- En la validacion real del worker, `Oregon` devolvio `451` desde `https://fapi.binance.com/fapi/v1/klines`, lo que apunta a restriccion geografica/regulatoria por egress de region US.
+- La region operativa recomendada para este blueprint pasa a ser `Frankfurt`.
 
 ## Por que worker y no web
 Este bot no expone HTTP ni necesita puerto publico. Forzarlo a `web` seria arquitectura falsa.

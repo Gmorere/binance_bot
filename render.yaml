@@ -3,7 +3,7 @@
     name: binance-futures-bot-paper
     runtime: docker
     plan: starter
-    region: oregon
+    region: frankfurt
     numInstances: 1
     dockerfilePath: ./Dockerfile
     dockerCommand: python run_paper.py
