@@ -1,18 +1,17 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal, Optional
+from typing import Optional
 
 import pandas as pd
 
+from src.core.models import ExitReason
+from src.execution.slippage import apply_adverse_entry_slippage, apply_adverse_exit_slippage
 from src.strategy.entry_rules import OrderPlan
 
 
 class ExecutionSimulatorError(Exception):
     """Error relacionado con simulación de ejecución."""
-
-
-ExitReason = Literal["STOP_LOSS", "TP1", "TP2", "TIMEOUT", "END_OF_DATA", "NO_EXIT"]
 
 
 @dataclass
@@ -42,6 +41,7 @@ def _validate_inputs(
     position_size_units: float,
     fee_rate_entry: float,
     fee_rate_exit: float,
+    slippage_pct: float,
     tp1_fraction: float,
     tp2_fraction: float,
     max_bars_in_trade: Optional[int],
@@ -61,6 +61,8 @@ def _validate_inputs(
 
     if fee_rate_entry < 0 or fee_rate_exit < 0:
         raise ExecutionSimulatorError("Las comisiones no pueden ser negativas.")
+    if slippage_pct < 0:
+        raise ExecutionSimulatorError("slippage_pct no puede ser negativo.")
 
     if tp1_fraction <= 0 or tp2_fraction <= 0:
         raise ExecutionSimulatorError("Las fracciones TP deben ser mayores a 0.")
@@ -127,6 +129,7 @@ def simulate_trade_v1(
     position_size_units: float,
     fee_rate_entry: float,
     fee_rate_exit: float,
+    slippage_pct: float = 0.0,
     tp1_fraction: float = 0.40,
     tp2_fraction: float = 0.60,
     max_bars_in_trade: Optional[int] = None,
@@ -150,15 +153,26 @@ def simulate_trade_v1(
         position_size_units=position_size_units,
         fee_rate_entry=fee_rate_entry,
         fee_rate_exit=fee_rate_exit,
+        slippage_pct=slippage_pct,
         tp1_fraction=tp1_fraction,
         tp2_fraction=tp2_fraction,
         max_bars_in_trade=max_bars_in_trade,
     )
 
     entry_time = pd.to_datetime(future_df.iloc[0]["timestamp"], utc=True)
-    entry_price = float(order_plan.entry_price)
+    reference_entry_price = float(order_plan.entry_price)
+    entry_price = apply_adverse_entry_slippage(
+        side=order_plan.side,
+        price=reference_entry_price,
+        slippage_pct=slippage_pct,
+    )
     side = order_plan.side
     notes: list[str] = ["Trade abierto para simulación v1 con parciales TP1/TP2."]
+    if slippage_pct > 0:
+        notes.append(
+            f"Slippage adverso aplicado: {slippage_pct:.4%} | "
+            f"entry_ref={reference_entry_price:.4f} entry_fill={entry_price:.4f}"
+        )
 
     total_size = float(position_size_units)
     tp1_size = total_size * tp1_fraction
@@ -185,6 +199,7 @@ def simulate_trade_v1(
         candle_index: int,
         exit_reason: ExitReason,
         note: str,
+        apply_slippage: bool = True,
     ) -> None:
         nonlocal pnl_gross_total
         nonlocal fee_exit_total
@@ -195,12 +210,21 @@ def simulate_trade_v1(
         nonlocal final_exit_reason
         nonlocal final_exit_index
 
-        pnl_gross_total += _compute_pnl_gross(side, entry_price, exit_price, size_units)
-        fee_exit_total += _compute_exit_fee(exit_price, size_units, fee_rate_exit)
-        total_exit_notional += exit_price * size_units
+        filled_exit_price = (
+            apply_adverse_exit_slippage(side, exit_price, slippage_pct)
+            if apply_slippage
+            else exit_price
+        )
+
+        pnl_gross_total += _compute_pnl_gross(side, entry_price, filled_exit_price, size_units)
+        fee_exit_total += _compute_exit_fee(filled_exit_price, size_units, fee_rate_exit)
+        total_exit_notional += filled_exit_price * size_units
         remaining_size -= size_units
 
-        notes.append(note)
+        if apply_slippage and slippage_pct > 0:
+            notes.append(f"{note} | exit_ref={exit_price:.4f} exit_fill={filled_exit_price:.4f}")
+        else:
+            notes.append(note)
 
         if remaining_size < -1e-12:
             raise ExecutionSimulatorError("remaining_size quedó negativo. Revisa lógica de parciales.")
@@ -247,6 +271,7 @@ def simulate_trade_v1(
                         candle_index=idx,
                         exit_reason="STOP_LOSS",
                         note="Salida total por STOP_LOSS antes de TP1.",
+                        apply_slippage=stop_exit_price == float(order_plan.stop_price),
                     )
                     break
 
@@ -286,6 +311,7 @@ def simulate_trade_v1(
                         candle_index=idx,
                         exit_reason="STOP_LOSS",
                         note="Stop del remanente después de TP1.",
+                        apply_slippage=stop_exit_price == float(order_plan.stop_price),
                     )
                     break
 
@@ -314,6 +340,7 @@ def simulate_trade_v1(
                         candle_index=idx,
                         exit_reason="STOP_LOSS",
                         note="Salida total por STOP_LOSS antes de TP1.",
+                        apply_slippage=stop_exit_price == float(order_plan.stop_price),
                     )
                     break
 
@@ -353,6 +380,7 @@ def simulate_trade_v1(
                         candle_index=idx,
                         exit_reason="STOP_LOSS",
                         note="Stop del remanente después de TP1.",
+                        apply_slippage=stop_exit_price == float(order_plan.stop_price),
                     )
                     break
 

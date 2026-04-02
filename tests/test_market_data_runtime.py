@@ -109,6 +109,30 @@ class MarketDataRuntimeTests(unittest.TestCase):
         results = refresh_entry_market_data(self.config, output_fn=lambda _line: None)
         self.assertEqual(results, [])
 
+    def test_refresh_uses_prod_market_data_url_by_default_even_if_orders_use_testnet(self) -> None:
+        self.config["data"]["refresh_from_binance_rest"] = True  # type: ignore[index]
+        captured_calls: list[dict[str, object]] = []
+
+        def fake_refresh(**kwargs: object) -> RefreshResult:
+            captured_calls.append(kwargs)
+            return RefreshResult(
+                symbol="BTCUSDT",
+                timeframe=str(kwargs["timeframe"]),
+                rows_before=2,
+                rows_after=2,
+                new_rows=0,
+                latest_timestamp="2026-01-01 00:15:00+00:00",
+            )
+
+        refresh_entry_market_data(
+            self.config,
+            output_fn=lambda _line: None,
+            refresh_symbol_timeframe_csv_fn=fake_refresh,
+        )
+
+        self.assertEqual(len(captured_calls), 1)
+        self.assertEqual(captured_calls[0]["base_url"], "https://fapi.binance.com")
+
     def test_polling_service_respects_next_candle_close_before_refreshing_again(self) -> None:
         self.config["data"]["refresh_from_binance_rest"] = True  # type: ignore[index]
         refresh_calls: list[dict[str, object]] = []
@@ -182,6 +206,61 @@ class MarketDataRuntimeTests(unittest.TestCase):
         self.assertEqual(third_result.next_poll_after_ms, 1767228320000)
         self.assertTrue(any("data_refresh_skip" in line for line in outputs))
         self.assertTrue(any("data_refresh_schedule" in line for line in outputs))
+
+    def test_snapshot_loads_bias_and_context_timeframes_when_configured(self) -> None:
+        self.config["timeframes"] = {"entry": "15m", "bias": "1h", "context": "4h"}  # type: ignore[index]
+
+        pd.DataFrame(
+            [
+                {
+                    "timestamp": "2026-01-01T00:00:00Z",
+                    "open": 100.0,
+                    "high": 101.0,
+                    "low": 99.0,
+                    "close": 100.5,
+                    "volume": 1000.0,
+                },
+                {
+                    "timestamp": "2026-01-01T01:00:00Z",
+                    "open": 100.5,
+                    "high": 101.5,
+                    "low": 100.0,
+                    "close": 101.0,
+                    "volume": 1100.0,
+                },
+            ]
+        ).to_csv(self.raw_data_path / "BTCUSDT_1h.csv", index=False)
+        pd.DataFrame(
+            [
+                {
+                    "timestamp": "2026-01-01T00:00:00Z",
+                    "open": 100.0,
+                    "high": 101.0,
+                    "low": 99.0,
+                    "close": 100.5,
+                    "volume": 1000.0,
+                },
+                {
+                    "timestamp": "2026-01-01T04:00:00Z",
+                    "open": 100.5,
+                    "high": 101.5,
+                    "low": 100.0,
+                    "close": 101.0,
+                    "volume": 1100.0,
+                },
+            ]
+        ).to_csv(self.raw_data_path / "BTCUSDT_4h.csv", index=False)
+
+        snapshot = build_market_data_service(
+            self.config,
+            output_fn=lambda _line: None,
+        ).load_entry_market_snapshot()
+
+        self.assertIn("BTCUSDT", snapshot.market_data_by_symbol)
+        self.assertIn("BTCUSDT", snapshot.bias_market_data_by_symbol)
+        self.assertIn("BTCUSDT", snapshot.context_market_data_by_symbol)
+        self.assertFalse(snapshot.bias_market_data_by_symbol["BTCUSDT"].empty)
+        self.assertFalse(snapshot.context_market_data_by_symbol["BTCUSDT"].empty)
 
 
 if __name__ == "__main__":

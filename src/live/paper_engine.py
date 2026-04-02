@@ -4,16 +4,34 @@ import json
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Mapping
+from uuid import uuid4
 
 import pandas as pd
 
 from src.live.candidate_scanner import scan_trade_candidates
 from src.live.runtime_config import RuntimeConfig, load_runtime_config
+from src.execution.slippage import apply_adverse_entry_slippage, apply_adverse_exit_slippage
 from src.risk.risk_engine import (
+    get_risk_pct_for_bucket,
     portfolio_allows_new_trade,
     system_loss_limits_allow_trade,
 )
 from src.risk.sizing_engine import PositionSizingResult, calculate_position_size
+from src.strategy.scoring_policy import (
+    CandidateRiskResolution,
+    ScoringPolicyError,
+    resolve_candidate_risk_from_score,
+)
+from src.strategy.context_policy import ContextPolicyError, evaluate_trade_candidate_policy
+from src.strategy.runtime_policy import (
+    load_backtest_strategy_policy,
+    load_dynamic_risk_policy,
+    resolve_pullback_settings,
+    resolve_symbol_allowed_setups,
+    resolve_symbol_backtest_risk,
+    resolve_symbol_filters,
+)
+from src.strategy.signal_service import detect_trade_candidate
 
 
 class PaperEngineError(Exception):
@@ -32,6 +50,7 @@ class PaperPosition:
     tp2_price: float
     leverage: float
     risk_pct: float
+    risk_bucket: str
     current_risk_pct: float
     initial_quantity: float
     remaining_quantity: float
@@ -104,6 +123,7 @@ def _paper_position_from_dict(payload: Mapping[str, Any]) -> PaperPosition:
         tp2_price=float(payload["tp2_price"]),
         leverage=float(payload["leverage"]),
         risk_pct=float(payload["risk_pct"]),
+        risk_bucket=str(payload.get("risk_bucket", "normal")),
         current_risk_pct=float(payload["current_risk_pct"]),
         initial_quantity=float(payload["initial_quantity"]),
         remaining_quantity=float(payload["remaining_quantity"]),
@@ -164,7 +184,10 @@ def save_paper_state(state: PaperState, state_path: str | Path) -> Path:
     path = Path(state_path)
     path.parent.mkdir(parents=True, exist_ok=True)
     serialized = asdict(state)
-    path.write_text(json.dumps(serialized, ensure_ascii=False, indent=2), encoding="utf-8")
+    payload = json.dumps(serialized, ensure_ascii=False, indent=2)
+    temp_path = path.with_name(f"{path.name}.{uuid4().hex}.tmp")
+    temp_path.write_text(payload, encoding="utf-8")
+    temp_path.replace(path)
     return path
 
 
@@ -210,13 +233,92 @@ def _compute_drawdown_pct(realized_pnl: float, reference_balance: float) -> floa
 
 
 def _risk_pct_for_paper(config: Mapping[str, Any], runtime: RuntimeConfig) -> float:
-    risk_by_score = dict(config["risk"]["risk_by_score"])
     try:
-        return float(risk_by_score[runtime.paper_risk_bucket])
-    except KeyError as exc:
-        raise PaperEngineError(
-            f"No existe risk.risk_by_score.{runtime.paper_risk_bucket} en config."
-        ) from exc
+        risk_pct, _risk_notes = get_risk_pct_for_bucket(
+            risk_by_score=dict(config["risk"]["risk_by_score"]),
+            risk_bucket=runtime.paper_risk_bucket,
+        )
+    except Exception as exc:
+        raise PaperEngineError(f"No se pudo resolver risk bucket de paper: {exc}") from exc
+
+    return risk_pct
+
+
+def _resolve_candidate_paper_risk(
+    *,
+    config: Mapping[str, Any],
+    runtime: RuntimeConfig,
+    dynamic_risk_policy: Mapping[str, object],
+    symbol: str,
+    candidate: Any,
+    df_1h: pd.DataFrame | None,
+    df_4h: pd.DataFrame | None,
+) -> CandidateRiskResolution:
+    default_risk_pct, default_risk_bucket = resolve_symbol_backtest_risk(
+        dict(config),
+        symbol,
+        _risk_pct_for_paper(config, runtime),
+        runtime.paper_risk_bucket,
+    )
+
+    if not bool(dynamic_risk_policy.get("enabled", False)):
+        return CandidateRiskResolution(
+            trade_allowed=True,
+            risk_pct=float(default_risk_pct),
+            risk_bucket=str(default_risk_bucket),
+            score_total=0.0,
+            notes=["Dynamic risk deshabilitado en paper."],
+        )
+
+    if df_1h is None or df_4h is None:
+        return CandidateRiskResolution(
+            trade_allowed=True,
+            risk_pct=float(default_risk_pct),
+            risk_bucket=str(default_risk_bucket),
+            score_total=0.0,
+            notes=["Dynamic risk en paper sin contexto 1h/4h. Se usa riesgo base."],
+        )
+
+    try:
+        risk_resolution = resolve_candidate_risk_from_score(
+            symbol=symbol,
+            candidate=candidate,
+            df_1h=df_1h,
+            df_4h=df_4h,
+            score_thresholds={
+                "min_trade": float(config["score_thresholds"]["min_trade"]),
+                "aggressive": float(config["score_thresholds"]["aggressive"]),
+                "exceptional": float(config["score_thresholds"]["exceptional"]),
+            },
+            risk_by_score={
+                str(key): float(value)
+                for key, value in dict(config["risk"]["risk_by_score"]).items()
+            },
+            open_positions=0,
+            same_side_exposure_count=0,
+        )
+    except (ScoringPolicyError, KeyError, TypeError, ValueError) as exc:
+        raise PaperEngineError(f"No se pudo resolver dynamic risk en paper: {exc}") from exc
+
+    if (
+        bool(dynamic_risk_policy.get("preserve_symbol_base_risk", True))
+        and risk_resolution.trade_allowed
+        and float(risk_resolution.risk_pct) < float(default_risk_pct)
+    ):
+        updated_notes = list(risk_resolution.notes)
+        updated_notes.append(
+            "Dynamic risk preserva riesgo base del simbolo en paper: "
+            f"{risk_resolution.risk_pct:.4f} -> {float(default_risk_pct):.4f}"
+        )
+        return CandidateRiskResolution(
+            trade_allowed=True,
+            risk_pct=float(default_risk_pct),
+            risk_bucket=str(risk_resolution.risk_bucket),
+            score_total=float(risk_resolution.score_total),
+            notes=updated_notes,
+        )
+
+    return risk_resolution
 
 
 def _compute_entry_fee(entry_price: float, size_units: float, fee_rate: float) -> float:
@@ -250,11 +352,18 @@ def _open_position(
     timestamp: pd.Timestamp,
     order_plan: Any,
     sizing: PositionSizingResult,
+    risk_bucket: str,
     fee_rate_entry: float,
+    slippage_pct: float,
     events: list[str],
 ) -> None:
+    entry_price = apply_adverse_entry_slippage(
+        side=str(order_plan.side),
+        price=float(order_plan.entry_price),
+        slippage_pct=slippage_pct,
+    )
     fee_entry = _compute_entry_fee(
-        float(order_plan.entry_price),
+        entry_price,
         float(sizing.position_size_units),
         fee_rate_entry,
     )
@@ -264,16 +373,17 @@ def _open_position(
         side=str(order_plan.side),
         entry_time=str(timestamp),
         last_update_time=str(timestamp),
-        entry_price=float(order_plan.entry_price),
+        entry_price=entry_price,
         stop_price=float(order_plan.stop_price),
         tp1_price=float(order_plan.tp1_price),
         tp2_price=float(order_plan.tp2_price),
         leverage=float(sizing.leverage),
         risk_pct=float(sizing.risk_pct),
+        risk_bucket=str(risk_bucket),
         current_risk_pct=float(sizing.risk_pct),
         initial_quantity=float(sizing.position_size_units),
         remaining_quantity=float(sizing.position_size_units),
-        notional_value_usdt=float(sizing.notional_value_usdt),
+        notional_value_usdt=entry_price * float(sizing.position_size_units),
         fee_entry_usdt=fee_entry,
         realized_pnl_net_usdt=-fee_entry,
         notes=list(order_plan.notes),
@@ -288,6 +398,7 @@ def _open_position(
         (
             f"OPEN {symbol} {position.side} qty={position.initial_quantity:.6f} "
             f"entry={position.entry_price:.4f} risk_pct={position.risk_pct:.4f} "
+            f"risk_bucket={position.risk_bucket} "
             f"fee_entry={fee_entry:.4f}"
         ),
     )
@@ -301,11 +412,18 @@ def _register_partial_exit(
     exit_price: float,
     size_units: float,
     fee_rate_exit: float,
+    slippage_pct: float,
     note: str,
     events: list[str],
+    apply_slippage: bool = True,
 ) -> None:
-    pnl_gross = _compute_pnl_gross(position.side, position.entry_price, exit_price, size_units)
-    fee_exit = _compute_exit_fee(exit_price, size_units, fee_rate_exit)
+    filled_exit_price = (
+        apply_adverse_exit_slippage(position.side, exit_price, slippage_pct)
+        if apply_slippage
+        else exit_price
+    )
+    pnl_gross = _compute_pnl_gross(position.side, position.entry_price, filled_exit_price, size_units)
+    fee_exit = _compute_exit_fee(filled_exit_price, size_units, fee_rate_exit)
     net_delta = pnl_gross - fee_exit
 
     previous_risk = position.current_risk_pct
@@ -330,7 +448,7 @@ def _register_partial_exit(
         state,
         events,
         (
-            f"EXIT {position.symbol} {note} qty={size_units:.6f} price={exit_price:.4f} "
+            f"EXIT {position.symbol} {note} qty={size_units:.6f} price={filled_exit_price:.4f} "
             f"gross={pnl_gross:.4f} fee_exit={fee_exit:.4f} net={net_delta:.4f}"
         ),
     )
@@ -360,6 +478,7 @@ def _manage_position_on_candle(
     *,
     candle: Mapping[str, Any],
     fee_rate_exit: float,
+    slippage_pct: float,
     events: list[str],
 ) -> bool:
     candle_time = pd.to_datetime(candle["timestamp"], utc=True)
@@ -381,8 +500,10 @@ def _manage_position_on_candle(
                     exit_price=exit_price,
                     size_units=position.remaining_quantity,
                     fee_rate_exit=fee_rate_exit,
+                    slippage_pct=slippage_pct,
                     note="STOP_LOSS antes de TP1",
                     events=events,
+                    apply_slippage=exit_price == position.stop_price,
                 )
                 return True
 
@@ -394,6 +515,7 @@ def _manage_position_on_candle(
                     exit_price=position.tp2_price,
                     size_units=position.remaining_quantity,
                     fee_rate_exit=fee_rate_exit,
+                    slippage_pct=slippage_pct,
                     note="TP2 directo sin TP1",
                     events=events,
                 )
@@ -407,6 +529,7 @@ def _manage_position_on_candle(
                     exit_price=position.tp1_price,
                     size_units=position.initial_quantity * TP1_FRACTION,
                     fee_rate_exit=fee_rate_exit,
+                    slippage_pct=slippage_pct,
                     note="TP1 parcial",
                     events=events,
                 )
@@ -423,8 +546,10 @@ def _manage_position_on_candle(
                     exit_price=exit_price,
                     size_units=position.remaining_quantity,
                     fee_rate_exit=fee_rate_exit,
-                    note="STOP remanente después de TP1",
+                    slippage_pct=slippage_pct,
+                    note="STOP remanente despues de TP1",
                     events=events,
+                    apply_slippage=exit_price == position.stop_price,
                 )
                 return True
 
@@ -436,6 +561,7 @@ def _manage_position_on_candle(
                     exit_price=position.tp2_price,
                     size_units=position.remaining_quantity,
                     fee_rate_exit=fee_rate_exit,
+                    slippage_pct=slippage_pct,
                     note="TP2 remanente",
                     events=events,
                 )
@@ -452,8 +578,10 @@ def _manage_position_on_candle(
                     exit_price=exit_price,
                     size_units=position.remaining_quantity,
                     fee_rate_exit=fee_rate_exit,
+                    slippage_pct=slippage_pct,
                     note="STOP_LOSS antes de TP1",
                     events=events,
+                    apply_slippage=exit_price == position.stop_price,
                 )
                 return True
 
@@ -465,6 +593,7 @@ def _manage_position_on_candle(
                     exit_price=position.tp2_price,
                     size_units=position.remaining_quantity,
                     fee_rate_exit=fee_rate_exit,
+                    slippage_pct=slippage_pct,
                     note="TP2 directo sin TP1",
                     events=events,
                 )
@@ -478,6 +607,7 @@ def _manage_position_on_candle(
                     exit_price=position.tp1_price,
                     size_units=position.initial_quantity * TP1_FRACTION,
                     fee_rate_exit=fee_rate_exit,
+                    slippage_pct=slippage_pct,
                     note="TP1 parcial",
                     events=events,
                 )
@@ -494,8 +624,10 @@ def _manage_position_on_candle(
                     exit_price=exit_price,
                     size_units=position.remaining_quantity,
                     fee_rate_exit=fee_rate_exit,
-                    note="STOP remanente después de TP1",
+                    slippage_pct=slippage_pct,
+                    note="STOP remanente despues de TP1",
                     events=events,
+                    apply_slippage=exit_price == position.stop_price,
                 )
                 return True
 
@@ -507,16 +639,34 @@ def _manage_position_on_candle(
                     exit_price=position.tp2_price,
                     size_units=position.remaining_quantity,
                     fee_rate_exit=fee_rate_exit,
+                    slippage_pct=slippage_pct,
                     note="TP2 remanente",
                     events=events,
                 )
                 return True
 
     else:
-        raise PaperEngineError(f"Side inválido en posición paper: {position.side}")
+        raise PaperEngineError(f"Side invalido en posicion paper: {position.side}")
 
     position.last_update_time = str(candle_time)
     return False
+
+
+def _get_unprocessed_candles(
+    market_df: pd.DataFrame,
+    last_processed_timestamp: str | None,
+) -> pd.DataFrame:
+    if market_df.empty:
+        return market_df.iloc[0:0].copy()
+
+    if not last_processed_timestamp:
+        return market_df.tail(1).copy().reset_index(drop=True)
+
+    last_processed = pd.Timestamp(last_processed_timestamp)
+    pending = market_df.loc[
+        pd.to_datetime(market_df["timestamp"], utc=True) > last_processed
+    ].copy()
+    return pending.reset_index(drop=True)
 
 
 def run_paper_cycle(
@@ -524,6 +674,8 @@ def run_paper_cycle(
     config: Mapping[str, Any],
     market_data_by_symbol: Mapping[str, pd.DataFrame],
     state: PaperState,
+    bias_market_data_by_symbol: Mapping[str, pd.DataFrame] | None = None,
+    context_market_data_by_symbol: Mapping[str, pd.DataFrame] | None = None,
 ) -> PaperCycleResult:
     if not market_data_by_symbol:
         raise PaperEngineError("market_data_by_symbol no puede venir vacío.")
@@ -534,20 +686,23 @@ def run_paper_cycle(
             f"run_paper_cycle requiere runtime.mode='paper', actual: {runtime.mode}"
         )
 
+    backtest_policy = load_backtest_strategy_policy(dict(config))
+    dynamic_risk_policy = load_dynamic_risk_policy(dict(config))
+    bias_market_data_by_symbol = dict(bias_market_data_by_symbol or {})
+    context_market_data_by_symbol = dict(context_market_data_by_symbol or {})
     non_empty_frames = [df for df in market_data_by_symbol.values() if not df.empty]
     if not non_empty_frames:
         raise PaperEngineError("No hay dataframes con datos para paper cycle.")
 
     cycle_timestamp = max(pd.to_datetime(df.iloc[-1]["timestamp"], utc=True) for df in non_empty_frames)
-    _reset_period_trackers(state, cycle_timestamp)
 
     fee_rate_entry = float(config["execution"]["fee_rate_entry"])
     fee_rate_exit = float(config["execution"]["fee_rate_exit"])
+    symbol_slippage = dict(config["execution"].get("slippage", {}))
     max_open_positions = int(config["risk"]["max_open_positions"])
     max_open_risk_pct = float(config["risk"]["max_open_risk"]["normal"])
     daily_limit_pct = float(config["risk"]["loss_limits"]["daily"])
     weekly_limit_pct = float(config["risk"]["loss_limits"]["weekly"])
-    paper_risk_pct = _risk_pct_for_paper(config, runtime)
 
     opened_symbols: list[str] = []
     closed_symbols: list[str] = []
@@ -558,29 +713,38 @@ def run_paper_cycle(
     eligible_trigger_indices: dict[str, int] = {}
 
     for symbol, market_df in market_data_by_symbol.items():
-        if market_df.empty:
-            continue
-
-        latest_candle = market_df.iloc[-1]
-        latest_timestamp = str(pd.to_datetime(latest_candle["timestamp"], utc=True))
-        if state.processed_candle_timestamps.get(symbol) == latest_timestamp:
+        pending_candles = _get_unprocessed_candles(
+            market_df,
+            state.processed_candle_timestamps.get(symbol),
+        )
+        if pending_candles.empty:
             continue
 
         had_position = symbol in state.open_positions
         if had_position:
-            position = state.open_positions[symbol]
-            fully_closed = _manage_position_on_candle(
-                state,
-                position,
-                candle=latest_candle,
-                fee_rate_exit=fee_rate_exit,
-                events=events,
-            )
+            for pending_candle in pending_candles.to_dict("records"):
+                _reset_period_trackers(
+                    state,
+                    pd.to_datetime(pending_candle["timestamp"], utc=True),
+                )
+                if symbol not in state.open_positions:
+                    break
+                position = state.open_positions[symbol]
+                fully_closed = _manage_position_on_candle(
+                    state,
+                    position,
+                    candle=pending_candle,
+                    fee_rate_exit=fee_rate_exit,
+                    slippage_pct=float(symbol_slippage.get(symbol, 0.0)),
+                    events=events,
+                )
+                if fully_closed:
+                    _close_position(state, symbol, events)
+                    closed_symbols.append(symbol)
+                    break
             updated_symbols.append(symbol)
-            if fully_closed:
-                _close_position(state, symbol, events)
-                closed_symbols.append(symbol)
 
+        latest_timestamp = str(pd.to_datetime(pending_candles.iloc[-1]["timestamp"], utc=True))
         state.processed_candle_timestamps[symbol] = latest_timestamp
 
         if had_position:
@@ -592,19 +756,82 @@ def run_paper_cycle(
         eligible_market_data[symbol] = market_df
         eligible_trigger_indices[symbol] = len(market_df) - 1
 
+    _reset_period_trackers(state, cycle_timestamp)
     daily_drawdown_pct = _compute_drawdown_pct(state.realized_pnl_today, state.day_start_balance)
     weekly_drawdown_pct = _compute_drawdown_pct(state.realized_pnl_week, state.week_start_balance)
 
     if eligible_market_data:
+        def _resolve_candidate(
+            symbol_arg: str,
+            market_df_arg: pd.DataFrame,
+            trigger_index_arg: int,
+            entry_reference_price: float,
+        ):
+            symbol_filters = resolve_symbol_filters(dict(config), symbol_arg)
+            symbol_allowed_setups = resolve_symbol_allowed_setups(dict(config), symbol_arg)
+            pullback_settings = resolve_pullback_settings(dict(config), symbol_arg)
+            return detect_trade_candidate(
+                symbol=symbol_arg,
+                market_df=market_df_arg,
+                trigger_index=trigger_index_arg,
+                entry_reference_price=entry_reference_price,
+                stop_buffer_atr_fraction=float(symbol_filters.get("stop_buffer_atr_fraction", 0.10)),
+                min_candles=6,
+                max_candles=12,
+                max_range_atr_multiple=float(symbol_filters.get("max_consolidation_range_atr_multiple", 1.2)),
+                min_volume_ratio=float(symbol_filters.get("min_breakout_volume_multiple", 1.0)),
+                max_trigger_candle_atr_multiple=float(symbol_filters.get("max_trigger_candle_atr_multiple", 1.8)),
+                allowed_setups=symbol_allowed_setups,
+                impulse_lookback_candles=int(pullback_settings.get("impulse_lookback_candles", 6)),
+                min_pullback_candles=int(pullback_settings.get("min_pullback_candles", 2)),
+                max_pullback_candles=int(pullback_settings.get("max_pullback_candles", 5)),
+                min_impulse_atr_multiple=float(pullback_settings.get("min_impulse_atr_multiple", 1.8)),
+                min_retrace_ratio=float(pullback_settings.get("min_retrace_ratio", 0.25)),
+                max_retrace_ratio=float(pullback_settings.get("max_retrace_ratio", 0.60)),
+                max_trigger_body_atr_multiple=(
+                    float(pullback_settings["max_trigger_body_atr_multiple"])
+                    if "max_trigger_body_atr_multiple" in pullback_settings
+                    else None
+                ),
+            )
+
         candidates = scan_trade_candidates(
             market_data_by_symbol=eligible_market_data,
             trigger_index_by_symbol=eligible_trigger_indices,
             entry_price_resolver=lambda _symbol, df, idx: float(df.iloc[idx]["close"]),
+            trade_candidate_resolver=_resolve_candidate,
         )
 
         for symbol_candidate in sorted(candidates, key=lambda item: item.symbol):
             symbol = symbol_candidate.symbol
-            order_plan = symbol_candidate.candidate.order_plan
+            candidate = symbol_candidate.candidate
+            order_plan = candidate.order_plan
+
+            try:
+                candidate_allowed, candidate_notes = evaluate_trade_candidate_policy(
+                    symbol=symbol,
+                    candidate=candidate,
+                    df_1h=bias_market_data_by_symbol.get(symbol),
+                    df_4h=context_market_data_by_symbol.get(symbol),
+                    allowed_sides_by_symbol=(
+                        dict(backtest_policy["allowed_sides"])
+                        if bool(backtest_policy["enabled"])
+                        else None
+                    ),
+                    enforce_context_alignment=bool(
+                        backtest_policy["enabled"]
+                        and backtest_policy["enforce_context_alignment"]
+                    ),
+                )
+            except ContextPolicyError as exc:
+                _append_event(state, events, f"SKIP {symbol} context_policy_error: {exc}")
+                continue
+
+            if candidate_notes:
+                order_plan.notes.extend(str(note) for note in candidate_notes)
+            if not candidate_allowed:
+                _append_event(state, events, f"SKIP {symbol} strategy_policy: {' | '.join(candidate_notes)}")
+                continue
 
             allowed_by_limits, limit_notes = system_loss_limits_allow_trade(
                 daily_drawdown_pct=daily_drawdown_pct,
@@ -616,11 +843,31 @@ def run_paper_cycle(
                 _append_event(state, events, f"SKIP {symbol} loss_limits: {' | '.join(limit_notes)}")
                 continue
 
+            try:
+                risk_resolution = _resolve_candidate_paper_risk(
+                    config=config,
+                    runtime=runtime,
+                    dynamic_risk_policy=dynamic_risk_policy,
+                    symbol=symbol,
+                    candidate=candidate,
+                    df_1h=bias_market_data_by_symbol.get(symbol),
+                    df_4h=context_market_data_by_symbol.get(symbol),
+                )
+            except PaperEngineError as exc:
+                _append_event(state, events, f"SKIP {symbol} dynamic_risk_error: {exc}")
+                continue
+
+            if risk_resolution.notes:
+                order_plan.notes.extend(str(note) for note in risk_resolution.notes)
+            if not risk_resolution.trade_allowed:
+                _append_event(state, events, f"SKIP {symbol} dynamic_risk: {' | '.join(risk_resolution.notes)}")
+                continue
+
             allowed_by_portfolio, portfolio_notes = portfolio_allows_new_trade(
                 current_open_positions=len(state.open_positions),
                 max_open_positions=max_open_positions,
                 current_open_risk_pct=state.open_risk_pct,
-                candidate_risk_pct=paper_risk_pct,
+                candidate_risk_pct=float(risk_resolution.risk_pct),
                 max_open_risk_pct=max_open_risk_pct,
             )
             if not allowed_by_portfolio:
@@ -629,7 +876,7 @@ def run_paper_cycle(
 
             sizing = calculate_position_size(
                 equity=state.equity,
-                risk_pct=paper_risk_pct,
+                risk_pct=float(risk_resolution.risk_pct),
                 entry_price=float(order_plan.entry_price),
                 stop_price=float(order_plan.stop_price),
                 leverage=float(config["leverage"][symbol]),
@@ -649,7 +896,9 @@ def run_paper_cycle(
                 timestamp=timestamp,
                 order_plan=order_plan,
                 sizing=sizing,
+                risk_bucket=str(risk_resolution.risk_bucket),
                 fee_rate_entry=fee_rate_entry,
+                slippage_pct=float(symbol_slippage.get(symbol, 0.0)),
                 events=events,
             )
             opened_symbols.append(symbol)
@@ -661,3 +910,23 @@ def run_paper_cycle(
         updated_symbols=updated_symbols,
         events=events,
     )
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -65,7 +65,10 @@ class RuntimeConfigTests(unittest.TestCase):
         runtime = load_runtime_config({"project": {"mode": "backtest"}})
         self.assertEqual(runtime.mode, "backtest")
         self.assertTrue(runtime.use_testnet)
+        self.assertFalse(runtime.use_testnet_market_data)
         self.assertEqual(runtime.exchange, "binance_usdm")
+        self.assertEqual(runtime.backtest_risk_bucket, "normal")
+        self.assertEqual(runtime.paper_risk_bucket, "normal")
         self.assertEqual(runtime.candle_close_grace_seconds, 3)
 
 

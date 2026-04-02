@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Mapping
 
 
 class RiskEngineError(Exception):
@@ -15,6 +16,31 @@ class RiskDecision:
     aggressive_allowed: bool
     exceptional_allowed: bool
     notes: list[str]
+
+
+def get_risk_pct_for_bucket(
+    *,
+    risk_by_score: Mapping[str, float],
+    risk_bucket: str,
+) -> tuple[float, list[str]]:
+    normalized_bucket = str(risk_bucket).strip().lower()
+    if not normalized_bucket:
+        raise RiskEngineError("risk_bucket no puede venir vacio.")
+
+    if normalized_bucket not in risk_by_score:
+        raise RiskEngineError(f"No existe risk.risk_by_score.{normalized_bucket}.")
+
+    risk_pct = float(risk_by_score[normalized_bucket])
+    if not (0 <= risk_pct < 1):
+        raise RiskEngineError(
+            f"risk_pct invalido para bucket {normalized_bucket}: {risk_pct}"
+        )
+
+    notes = [
+        f"Risk bucket aplicado: {normalized_bucket}",
+        f"risk_pct configurado: {risk_pct:.4f}",
+    ]
+    return risk_pct, notes
 
 
 def map_score_to_risk(

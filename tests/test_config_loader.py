@@ -87,20 +87,23 @@ class ConfigLoaderTests(unittest.TestCase):
         self.assertEqual(paths["outputs_path"], (self.base / "outputs").resolve())
 
     def test_load_config_applies_env_path_overrides(self) -> None:
+        raw_override = (self.base / "raw_override").resolve()
+        processed_override = (self.base / "processed_override").resolve()
+        outputs_override = (self.base / "outputs_override").resolve()
         config = load_config(
             self.config_path,
             env={
                 "BOT_BASE_DIR": str(self.base),
-                "BOT_RAW_DATA_PATH": "/tmp/raw_override",
-                "BOT_PROCESSED_DATA_PATH": "/tmp/processed_override",
-                "BOT_OUTPUTS_PATH": "/tmp/outputs_override",
+                "BOT_RAW_DATA_PATH": str(raw_override),
+                "BOT_PROCESSED_DATA_PATH": str(processed_override),
+                "BOT_OUTPUTS_PATH": str(outputs_override),
             },
         )
         paths = resolve_project_paths(config)
 
-        self.assertEqual(paths["raw_data_path"], Path("/tmp/raw_override").resolve())
-        self.assertEqual(paths["processed_data_path"], Path("/tmp/processed_override").resolve())
-        self.assertEqual(paths["outputs_path"], Path("/tmp/outputs_override").resolve())
+        self.assertEqual(paths["raw_data_path"], raw_override)
+        self.assertEqual(paths["processed_data_path"], processed_override)
+        self.assertEqual(paths["outputs_path"], outputs_override)
 
     def test_get_default_config_path_uses_env_when_present(self) -> None:
         path = get_default_config_path({"BOT_CONFIG_PATH": str(self.config_path)})

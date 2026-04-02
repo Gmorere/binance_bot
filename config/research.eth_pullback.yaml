@@ -1,4 +1,4 @@
-﻿project:
+project:
   name: "binance_futures_bot"
   version: "0.1.0"
   mode: "backtest"
@@ -8,7 +8,7 @@ runtime:
   exchange: "binance_usdm"
   poll_interval_seconds: 15
   backtest_risk_bucket: "strong"
-  paper_risk_bucket: "strong"
+  paper_risk_bucket: "normal"
 
 capital:
   initial_capital: 10000.0
@@ -16,11 +16,7 @@ capital:
 
 symbols:
   enabled:
-    - "BTCUSDT"
     - "ETHUSDT"
-    - "SOLUSDT"
-    - "BNBUSDT"
-    - "XRPUSDT"
 
 timeframes:
   context: "4h"
@@ -28,7 +24,7 @@ timeframes:
   entry: "15m"
 
 strategy:
-  name: "continuation_breakout_core_v3"
+  name: "eth_breakout_pullback_lab_v1"
   allowed_setups:
     - "BREAKOUT"
     - "PULLBACK"
@@ -36,20 +32,14 @@ strategy:
     enabled: true
     preserve_symbol_base_risk: true
   allowed_setups_by_symbol:
-    BTCUSDT:
-      - "BREAKOUT"
     ETHUSDT:
       - "BREAKOUT"
+      - "PULLBACK"
   backtest_policy:
     enabled: true
     enforce_context_alignment: true
-    excluded_symbols:
-      - "BNBUSDT"
-      - "SOLUSDT"
-      - "XRPUSDT"
+    excluded_symbols: []
     allowed_sides:
-      BTCUSDT:
-        - "SHORT"
       ETHUSDT:
         - "SHORT"
 
@@ -80,30 +70,18 @@ risk:
     weekly: 0.0500
 
 leverage:
-  BTCUSDT: 8
   ETHUSDT: 8
-  SOLUSDT: 5
-  BNBUSDT: 5
-  XRPUSDT: 5
 
 position_limits:
   max_notional_pct:
-    BTCUSDT: 0.80
     ETHUSDT: 0.90
-    SOLUSDT: 0.35
-    BNBUSDT: 0.35
-    XRPUSDT: 0.35
 
 execution:
   fee_rate_entry: 0.0004
   fee_rate_exit: 0.0004
 
   slippage:
-    BTCUSDT: 0.0002
     ETHUSDT: 0.0003
-    SOLUSDT: 0.0005
-    BNBUSDT: 0.0005
-    XRPUSDT: 0.0006
 
 filters:
   min_rr_net: 1.8
@@ -112,8 +90,6 @@ filters:
   max_consolidation_range_atr_multiple: 1.2
   max_trigger_candle_atr_multiple: 1.6
   by_symbol:
-    BTCUSDT:
-      max_consolidation_range_atr_multiple: 1.2
     ETHUSDT:
       max_consolidation_range_atr_multiple: 1.4
 
@@ -121,15 +97,14 @@ pullback:
   impulse_lookback_candles: 6
   min_pullback_candles: 2
   max_pullback_candles: 5
-  min_impulse_atr_multiple: 1.8
+  min_impulse_atr_multiple: 2.1
   min_retrace_ratio: 0.25
   max_retrace_ratio: 0.60
+  max_trigger_body_atr_multiple: 1.0
 
 trade_management:
   max_bars_in_trade: 24
   by_symbol:
-    BTCUSDT:
-      max_bars_in_trade: 16
     ETHUSDT:
       max_bars_in_trade: 32
 
@@ -147,7 +122,6 @@ reporting:
 
 binance:
   use_testnet: true
-  use_testnet_market_data: false
   recv_window_ms: 5000
   timeout_seconds: 30
   market_data_limit: 500

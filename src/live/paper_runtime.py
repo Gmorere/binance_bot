@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import time
 from dataclasses import dataclass
@@ -80,6 +80,8 @@ def run_paper_runtime_loop(
             result = run_paper_cycle(
                 config=config,
                 market_data_by_symbol=snapshot.market_data_by_symbol,
+                bias_market_data_by_symbol=snapshot.bias_market_data_by_symbol,
+                context_market_data_by_symbol=snapshot.context_market_data_by_symbol,
                 state=state,
             )
             state = result.state

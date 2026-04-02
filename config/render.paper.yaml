@@ -7,7 +7,8 @@ runtime:
   mode: "paper"
   exchange: "binance_usdm"
   poll_interval_seconds: 15
-  paper_risk_bucket: "normal"
+  backtest_risk_bucket: "normal"
+  paper_risk_bucket: "strong"
 
 capital:
   initial_capital: 10000.0
@@ -17,9 +18,6 @@ symbols:
   enabled:
     - "BTCUSDT"
     - "ETHUSDT"
-    - "SOLUSDT"
-    - "BNBUSDT"
-    - "XRPUSDT"
 
 timeframes:
   context: "4h"
@@ -27,13 +25,29 @@ timeframes:
   entry: "15m"
 
 strategy:
-  name: "continuation_breakout_momentum_v1"
+  name: "continuation_breakout_core_v3"
   allowed_setups:
     - "BREAKOUT"
     - "PULLBACK"
+  dynamic_risk_by_score:
+    enabled: true
+    preserve_symbol_base_risk: true
+  allowed_setups_by_symbol:
+    BTCUSDT:
+      - "BREAKOUT"
+    ETHUSDT:
+      - "BREAKOUT"
+  backtest_policy:
+    enabled: true
+    enforce_context_alignment: true
+    allowed_sides:
+      BTCUSDT:
+        - "SHORT"
+      ETHUSDT:
+        - "SHORT"
 
 score_thresholds:
-  min_trade: 70
+  min_trade: 75
   aggressive: 85
   exceptional: 93
 
@@ -43,6 +57,9 @@ risk:
     normal: 0.0060
     strong: 0.0085
     exceptional: 0.0110
+  backtest_by_symbol:
+    ETHUSDT:
+      risk_pct: 0.0100
 
   max_open_positions: 3
 
@@ -64,11 +81,8 @@ leverage:
 
 position_limits:
   max_notional_pct:
-    BTCUSDT: 0.60
-    ETHUSDT: 0.60
-    SOLUSDT: 0.35
-    BNBUSDT: 0.35
-    XRPUSDT: 0.35
+    BTCUSDT: 0.80
+    ETHUSDT: 0.90
 
 execution:
   fee_rate_entry: 0.0004
@@ -83,9 +97,23 @@ execution:
 
 filters:
   min_rr_net: 1.8
+  stop_buffer_atr_fraction: 0.10
   min_breakout_volume_multiple: 1.0
   max_consolidation_range_atr_multiple: 1.2
-  max_trigger_candle_atr_multiple: 1.8
+  max_trigger_candle_atr_multiple: 1.6
+  by_symbol:
+    BTCUSDT:
+      max_consolidation_range_atr_multiple: 1.2
+    ETHUSDT:
+      max_consolidation_range_atr_multiple: 1.4
+
+trade_management:
+  max_bars_in_trade: 24
+  by_symbol:
+    BTCUSDT:
+      max_bars_in_trade: 16
+    ETHUSDT:
+      max_bars_in_trade: 32
 
 data:
   raw_data_path: "data/raw"
@@ -101,6 +129,7 @@ reporting:
 
 binance:
   use_testnet: true
+  use_testnet_market_data: false
   recv_window_ms: 5000
   timeout_seconds: 30
   market_data_limit: 500

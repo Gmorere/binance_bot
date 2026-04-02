@@ -1,7 +1,7 @@
 ﻿from __future__ import annotations
 
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Callable, Mapping
 
 import pandas as pd
@@ -30,6 +30,8 @@ class MarketDataSnapshot:
     entry_timeframe: str
     market_data_by_symbol: dict[str, pd.DataFrame]
     latest_timestamps: dict[str, str]
+    bias_market_data_by_symbol: dict[str, pd.DataFrame] = field(default_factory=dict)
+    context_market_data_by_symbol: dict[str, pd.DataFrame] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -102,29 +104,30 @@ class PollingMarketDataService:
             raise MarketDataRuntimeError(f"Config incompleta para refresh market data: {exc}") from exc
 
         raw_data_path = str(data_cfg["raw_data_path"])
-        entry_timeframe = str(timeframes_cfg["entry"])
         symbols = list(symbols_cfg["enabled"])
         resolved_now_ms = _resolve_now_ms(now_ms)
-        base_url = _resolve_market_data_base_url(self.runtime.use_testnet)
+        base_url = _resolve_market_data_base_url(self.runtime.use_testnet_market_data)
+        timeframes_to_refresh = _resolve_runtime_timeframes(timeframes_cfg)
 
         results: list[RefreshResult] = []
         for symbol in symbols:
-            result = self.refresh_symbol_timeframe_csv_fn(
-                raw_data_path=raw_data_path,
-                symbol=symbol,
-                timeframe=entry_timeframe,
-                now_ms=resolved_now_ms,
-                limit=self.runtime.market_data_limit,
-                base_url=base_url,
-                timeout_seconds=self.runtime.timeout_seconds,
-            )
-            results.append(result)
-            self.output_fn(
-                "data_refresh "
-                f"symbol={result.symbol} timeframe={result.timeframe} "
-                f"new_rows={result.new_rows} rows_after={result.rows_after} "
-                f"latest_timestamp={result.latest_timestamp}"
-            )
+            for timeframe in timeframes_to_refresh:
+                result = self.refresh_symbol_timeframe_csv_fn(
+                    raw_data_path=raw_data_path,
+                    symbol=symbol,
+                    timeframe=timeframe,
+                    now_ms=resolved_now_ms,
+                    limit=self.runtime.market_data_limit,
+                    base_url=base_url,
+                    timeout_seconds=self.runtime.timeout_seconds,
+                )
+                results.append(result)
+                self.output_fn(
+                    "data_refresh "
+                    f"symbol={result.symbol} timeframe={result.timeframe} "
+                    f"new_rows={result.new_rows} rows_after={result.rows_after} "
+                    f"latest_timestamp={result.latest_timestamp}"
+                )
 
         return results
 
@@ -138,17 +141,30 @@ class PollingMarketDataService:
 
         raw_data_path = str(data_cfg["raw_data_path"])
         entry_timeframe = str(timeframes_cfg["entry"])
+        bias_timeframe = str(timeframes_cfg["bias"]) if "bias" in timeframes_cfg else None
+        context_timeframe = str(timeframes_cfg["context"]) if "context" in timeframes_cfg else None
         symbols = list(symbols_cfg["enabled"])
+        load_timeframes = _resolve_runtime_timeframes(timeframes_cfg)
 
         bundles = load_all_symbols(
             raw_data_path=raw_data_path,
             symbols=symbols,
-            timeframes=(entry_timeframe,),
+            timeframes=tuple(load_timeframes),
         )
 
         market_data_by_symbol = {
             symbol: add_basic_indicators(bundle[entry_timeframe]).reset_index(drop=True)
             for symbol, bundle in bundles.items()
+        }
+        bias_market_data_by_symbol = {
+            symbol: add_basic_indicators(bundle[bias_timeframe]).reset_index(drop=True)
+            for symbol, bundle in bundles.items()
+            if bias_timeframe is not None
+        }
+        context_market_data_by_symbol = {
+            symbol: add_basic_indicators(bundle[context_timeframe]).reset_index(drop=True)
+            for symbol, bundle in bundles.items()
+            if context_timeframe is not None
         }
         latest_timestamps = {
             symbol: str(pd.to_datetime(df.iloc[-1]["timestamp"], utc=True))
@@ -160,6 +176,8 @@ class PollingMarketDataService:
             entry_timeframe=entry_timeframe,
             market_data_by_symbol=market_data_by_symbol,
             latest_timestamps=latest_timestamps,
+            bias_market_data_by_symbol=bias_market_data_by_symbol,
+            context_market_data_by_symbol=context_market_data_by_symbol,
         )
 
     def _should_skip_refresh(self, now_ms: int) -> bool:
@@ -191,10 +209,23 @@ class PollingMarketDataService:
         return max(candle_close_due_ms, now_ms + min_spacing_ms)
 
 
-def _resolve_market_data_base_url(use_testnet: bool) -> str:
+def _resolve_runtime_timeframes(timeframes_cfg: Mapping[str, object]) -> list[str]:
+    timeframes: list[str] = []
+    for key in ("entry", "bias", "context"):
+        if key not in timeframes_cfg:
+            continue
+        normalized = str(timeframes_cfg[key]).strip()
+        if normalized and normalized not in timeframes:
+            timeframes.append(normalized)
+    if not timeframes:
+        raise MarketDataRuntimeError("Config incompleta para market data: falta timeframe entry.")
+    return timeframes
+
+
+def _resolve_market_data_base_url(use_testnet_market_data: bool) -> str:
     return (
         BinanceUsdmClient.TESTNET_BASE_URL
-        if use_testnet
+        if use_testnet_market_data
         else BinanceUsdmClient.PROD_BASE_URL
     )
 
@@ -274,3 +305,4 @@ def detect_symbols_with_new_candles(
         for symbol, latest_timestamp in latest_timestamps.items()
         if processed_candle_timestamps.get(symbol) != latest_timestamp
     )
+

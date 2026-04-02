@@ -8,12 +8,16 @@ from src.strategy.entry_rules import (
     EntryRulesError,
     OrderPlan,
     build_breakout_order_plan,
+    build_pullback_order_plan,
     validate_order_plan,
 )
 from src.strategy.setup_detector import (
     BreakoutDetection,
     ConsolidationRange,
+    PullbackDetection,
+    PullbackRange,
     detect_breakout_setup,
+    detect_pullback_setup,
 )
 
 
@@ -27,6 +31,22 @@ class TradeCandidate:
     setup_notes: list[str]
     trigger_index: int
     trigger_timestamp: pd.Timestamp
+    setup_type: str = "BREAKOUT"
+    volume_ratio: float = 0.0
+    trigger_too_extended: bool = False
+
+
+def _normalize_allowed_setups(allowed_setups: list[str] | None) -> list[str]:
+    if not allowed_setups:
+        return ["BREAKOUT"]
+
+    normalized: list[str] = []
+    for setup in allowed_setups:
+        setup_name = str(setup).strip().upper()
+        if setup_name and setup_name not in normalized:
+            normalized.append(setup_name)
+
+    return normalized or ["BREAKOUT"]
 
 
 def _validate_market_df(df: pd.DataFrame) -> None:
@@ -132,4 +152,128 @@ def detect_breakout_trade_candidate(
         setup_notes=setup_notes,
         trigger_index=trigger_index,
         trigger_timestamp=trigger_timestamp,
+        setup_type="BREAKOUT",
+        volume_ratio=float(breakout.volume_ratio),
+        trigger_too_extended=False,
     )
+
+
+def detect_trade_candidate(
+    *,
+    symbol: str,
+    market_df: pd.DataFrame,
+    trigger_index: int,
+    entry_reference_price: float,
+    allowed_setups: list[str] | None = None,
+    stop_buffer_atr_fraction: float = 0.10,
+    min_candles: int = 6,
+    max_candles: int = 12,
+    max_range_atr_multiple: float = 1.2,
+    min_volume_ratio: float = 1.0,
+    max_trigger_candle_atr_multiple: float = 1.8,
+    impulse_lookback_candles: int = 6,
+    min_pullback_candles: int = 2,
+    max_pullback_candles: int = 5,
+    min_impulse_atr_multiple: float = 1.8,
+    min_retrace_ratio: float = 0.25,
+    max_retrace_ratio: float = 0.60,
+    max_trigger_body_atr_multiple: float | None = None,
+) -> TradeCandidate | None:
+    _validate_market_df(market_df)
+
+    if not symbol:
+        raise SignalServiceError("symbol no puede venir vacio.")
+    if trigger_index < 29:
+        return None
+    if trigger_index >= len(market_df):
+        raise SignalServiceError("trigger_index fuera de rango.")
+    if entry_reference_price <= 0:
+        raise SignalServiceError("entry_reference_price debe ser mayor a 0.")
+
+    history_df = market_df.iloc[: trigger_index + 1].copy().reset_index(drop=True)
+    normalized_setups = _normalize_allowed_setups(allowed_setups)
+
+    for setup_name in normalized_setups:
+        if setup_name == "BREAKOUT":
+            candidate = detect_breakout_trade_candidate(
+                symbol=symbol,
+                market_df=market_df,
+                trigger_index=trigger_index,
+                entry_reference_price=entry_reference_price,
+                stop_buffer_atr_fraction=stop_buffer_atr_fraction,
+                min_candles=min_candles,
+                max_candles=max_candles,
+                max_range_atr_multiple=max_range_atr_multiple,
+                min_volume_ratio=min_volume_ratio,
+                max_trigger_candle_atr_multiple=max_trigger_candle_atr_multiple,
+            )
+            if candidate is not None:
+                return candidate
+            continue
+
+        if setup_name != "PULLBACK":
+            continue
+
+        setup = detect_pullback_setup(
+            df_15m=history_df,
+            impulse_lookback_candles=impulse_lookback_candles,
+            min_pullback_candles=min_pullback_candles,
+            max_pullback_candles=max_pullback_candles,
+            min_impulse_atr_multiple=min_impulse_atr_multiple,
+            min_retrace_ratio=min_retrace_ratio,
+            max_retrace_ratio=max_retrace_ratio,
+            min_volume_ratio=min_volume_ratio,
+            max_trigger_candle_atr_multiple=max_trigger_candle_atr_multiple,
+            max_trigger_body_atr_multiple=max_trigger_body_atr_multiple,
+        )
+
+        if not bool(setup.get("detected", False)):
+            continue
+
+        pullback = setup.get("pullback")
+        reentry = setup.get("reentry")
+
+        if not isinstance(pullback, PullbackRange):
+            raise SignalServiceError("pullback invalido.")
+        if not isinstance(reentry, PullbackDetection):
+            raise SignalServiceError("reentry invalido.")
+
+        try:
+            order_plan = build_pullback_order_plan(
+                symbol=symbol,
+                pullback_detection=reentry,
+                pullback_range=pullback,
+                next_open_price=entry_reference_price,
+                stop_buffer_atr_fraction=stop_buffer_atr_fraction,
+            )
+        except EntryRulesError:
+            continue
+
+        is_valid, validation_notes = validate_order_plan(order_plan)
+        if not is_valid:
+            continue
+
+        setup_notes: list[str] = []
+        raw_setup_notes = setup.get("notes", [])
+        if raw_setup_notes:
+            setup_notes.extend(str(note) for note in raw_setup_notes)
+        if validation_notes:
+            setup_notes.extend(str(note) for note in validation_notes)
+        if setup_notes:
+            order_plan.notes.extend(setup_notes)
+
+        trigger_timestamp = pd.to_datetime(
+            market_df.iloc[trigger_index]["timestamp"], utc=True
+        )
+
+        return TradeCandidate(
+            order_plan=order_plan,
+            setup_notes=setup_notes,
+            trigger_index=trigger_index,
+            trigger_timestamp=trigger_timestamp,
+            setup_type="PULLBACK",
+            volume_ratio=float(reentry.volume_ratio),
+            trigger_too_extended=False,
+        )
+
+    return None

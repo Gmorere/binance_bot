@@ -8,7 +8,17 @@ from typing import Literal, Optional
 Side = Literal["LONG", "SHORT"]
 SetupType = Literal["BREAKOUT", "PULLBACK"]
 BotMode = Literal["DEFENSIVE", "NORMAL", "OFFENSIVE"]
-ExitReason = Literal["STOP_LOSS", "TP1", "TP2", "TRAILING", "INVALIDATION", "FORCED_EXIT"]
+ExitReason = Literal[
+    "STOP_LOSS",
+    "TP1",
+    "TP2",
+    "TIMEOUT",
+    "END_OF_DATA",
+    "NO_EXIT",
+    "TRAILING",
+    "INVALIDATION",
+    "FORCED_EXIT",
+]
 
 
 @dataclass

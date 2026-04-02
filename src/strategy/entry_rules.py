@@ -3,7 +3,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal, Optional
 
-from src.strategy.setup_detector import BreakoutDetection, ConsolidationRange
+from src.strategy.setup_detector import (
+    BreakoutDetection,
+    ConsolidationRange,
+    PullbackDetection,
+    PullbackRange,
+)
 
 
 class EntryRulesError(Exception):
@@ -112,6 +117,64 @@ def build_breakout_order_plan(
         rr_2=2.0,
         breakout_level=breakout.breakout_level,
         setup_type="BREAKOUT",
+        notes=notes,
+    )
+
+
+def build_pullback_order_plan(
+    *,
+    symbol: str,
+    pullback_detection: PullbackDetection,
+    pullback_range: PullbackRange,
+    next_open_price: float,
+    stop_buffer_atr_fraction: float = 0.10,
+) -> OrderPlan:
+    _validate_positive(next_open_price, "next_open_price")
+
+    if not pullback_detection.detected:
+        raise EntryRulesError("No se puede construir order plan: pullback_detection.detected=False.")
+
+    if pullback_detection.side not in ("LONG", "SHORT"):
+        raise EntryRulesError(f"Side de pullback invalido: {pullback_detection.side}")
+
+    atr_value = pullback_range.atr_value
+    _validate_positive(atr_value, "pullback_range.atr_value")
+
+    stop_buffer = atr_value * stop_buffer_atr_fraction
+    notes: list[str] = []
+
+    if pullback_detection.side == "LONG":
+        stop_price = pullback_range.low - stop_buffer
+        if stop_price >= next_open_price:
+            raise EntryRulesError("Stop LONG invalido: stop_price >= entry_price.")
+    else:
+        stop_price = pullback_range.high + stop_buffer
+        if stop_price <= next_open_price:
+            raise EntryRulesError("Stop SHORT invalido: stop_price <= entry_price.")
+
+    tp1_price, tp2_price = _compute_tp_prices(
+        side=pullback_detection.side,
+        entry_price=next_open_price,
+        stop_price=stop_price,
+    )
+
+    notes.append("Order plan construido para pullback continuation.")
+    notes.append(f"Entrada en open siguiente vela: {next_open_price:.4f}")
+    if pullback_detection.trigger_level is not None:
+        notes.append(f"Nivel de reanudacion: {pullback_detection.trigger_level:.4f}")
+    notes.append(f"Stop buffer aplicado: {stop_buffer:.4f}")
+
+    return OrderPlan(
+        symbol=symbol,
+        side=pullback_detection.side,
+        entry_price=next_open_price,
+        stop_price=stop_price,
+        tp1_price=tp1_price,
+        tp2_price=tp2_price,
+        rr_1=1.0,
+        rr_2=2.0,
+        breakout_level=pullback_detection.trigger_level,
+        setup_type="PULLBACK",
         notes=notes,
     )
 

@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any, Literal, Mapping
@@ -16,10 +16,12 @@ class RuntimeConfig:
     mode: RuntimeMode
     exchange: str
     use_testnet: bool
+    use_testnet_market_data: bool
     recv_window_ms: int
     timeout_seconds: int
     market_data_limit: int
     poll_interval_seconds: int
+    backtest_risk_bucket: str
     paper_risk_bucket: str
     refresh_from_binance_rest: bool
     candle_close_grace_seconds: int
@@ -32,7 +34,9 @@ def load_runtime_config(
     exchange_cfg = dict(config.get("binance", {}))
     data_cfg = dict(config.get("data", {}))
 
-    mode = str(runtime_cfg.get("mode", config.get("project", {}).get("mode", "backtest"))).lower()
+    mode = str(
+        runtime_cfg.get("mode", config.get("project", {}).get("mode", "backtest"))
+    ).lower()
     allowed_modes = {"backtest", "paper", "live"}
     if mode not in allowed_modes:
         raise RuntimeConfigError(
@@ -44,11 +48,17 @@ def load_runtime_config(
         raise RuntimeConfigError("runtime.exchange no puede venir vacio.")
 
     use_testnet = bool(exchange_cfg.get("use_testnet", True))
+    use_testnet_market_data = bool(exchange_cfg.get("use_testnet_market_data", False))
     recv_window_ms = int(exchange_cfg.get("recv_window_ms", 5000))
     timeout_seconds = int(exchange_cfg.get("timeout_seconds", 30))
     market_data_limit = int(exchange_cfg.get("market_data_limit", 500))
     poll_interval_seconds = int(runtime_cfg.get("poll_interval_seconds", 15))
-    paper_risk_bucket = str(runtime_cfg.get("paper_risk_bucket", "normal")).strip().lower()
+    backtest_risk_bucket = str(
+        runtime_cfg.get("backtest_risk_bucket", "normal")
+    ).strip().lower()
+    paper_risk_bucket = str(
+        runtime_cfg.get("paper_risk_bucket", "normal")
+    ).strip().lower()
     refresh_from_binance_rest = bool(data_cfg.get("refresh_from_binance_rest", False))
     candle_close_grace_seconds = int(data_cfg.get("candle_close_grace_seconds", 3))
 
@@ -62,6 +72,10 @@ def load_runtime_config(
         raise RuntimeConfigError("runtime.poll_interval_seconds debe ser mayor a 0.")
     if candle_close_grace_seconds < 0:
         raise RuntimeConfigError("data.candle_close_grace_seconds no puede ser negativo.")
+    if backtest_risk_bucket not in {"small", "normal", "strong", "exceptional"}:
+        raise RuntimeConfigError(
+            "runtime.backtest_risk_bucket debe ser uno de: small, normal, strong, exceptional."
+        )
     if paper_risk_bucket not in {"small", "normal", "strong", "exceptional"}:
         raise RuntimeConfigError(
             "runtime.paper_risk_bucket debe ser uno de: small, normal, strong, exceptional."
@@ -71,10 +85,12 @@ def load_runtime_config(
         mode=mode,  # type: ignore[arg-type]
         exchange=exchange,
         use_testnet=use_testnet,
+        use_testnet_market_data=use_testnet_market_data,
         recv_window_ms=recv_window_ms,
         timeout_seconds=timeout_seconds,
         market_data_limit=market_data_limit,
         poll_interval_seconds=poll_interval_seconds,
+        backtest_risk_bucket=backtest_risk_bucket,
         paper_risk_bucket=paper_risk_bucket,
         refresh_from_binance_rest=refresh_from_binance_rest,
         candle_close_grace_seconds=candle_close_grace_seconds,
