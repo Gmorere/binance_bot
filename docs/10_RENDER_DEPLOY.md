@@ -1,20 +1,30 @@
-﻿# 10 - Render Deploy
+# 10 - Render Deploy
 
-## Hecho confirmado
-El repo ya tiene una base de despliegue para Render:
+## Estado real
+El repo ya tiene base de despliegue para Render y ya no esta bloqueado por falta de remoto.
+
+Artefactos relevantes:
 - [render.yaml](/D:/binance_futures_bot/render.yaml)
 - [Dockerfile](/D:/binance_futures_bot/Dockerfile)
 - [config/render.paper.yaml](/D:/binance_futures_bot/config/render.paper.yaml)
 
-## Lo que despliega hoy
-- Un `worker` de Render, no un `web service`.
-- Runtime Docker.
-- Un solo proceso (`numInstances: 1`).
-- Disco persistente montado en `/app/runtime`.
-- Paper mode sobre Binance Futures con refresh REST de market data.
+Lo que sigue pendiente no es preparar el repo, sino aplicar y validar el worker en Render.
+
+## Base de contenedor actual
+- El deploy cloud usa [Dockerfile](/D:/binance_futures_bot/Dockerfile) con `python:3.12-slim`.
+- No conviene usar `python:3.14-slim` hoy para este repo en Render porque `pandas==2.2.3` y `numpy==2.1.3` pueden caer a build desde fuente y romper o volver demasiado lento el deploy.
+
+## Que despliega hoy
+- un `worker` de Render, no un `web service`,
+- runtime Docker,
+- un solo proceso (`numInstances: 1`),
+- disco persistente montado en `/app/runtime`,
+- `paper mode` sobre Binance USD-M futures con refresh REST de market data.
+- feed de market data en produccion (`binance.use_testnet_market_data: false`) aunque el path de ordenes siga en testnet.
+- gating research `4h/1h`, restricciones por lado y score dinamico alineados con el `core` actual.
 
 ## Por que worker y no web
-Este bot hoy no expone HTTP ni necesita puerto publico. Forzarlo a `web` seria arquitectura falsa.
+Este bot no expone HTTP ni necesita puerto publico. Forzarlo a `web` seria arquitectura falsa.
 
 ## Archivos clave
 - Blueprint: [render.yaml](/D:/binance_futures_bot/render.yaml)
@@ -36,29 +46,35 @@ El estado y los datasets del worker deben vivir en el disco persistente:
 - processed data: `/app/runtime/data/processed`
 - outputs: `/app/runtime/outputs`
 
-Sin disco persistente, Render perderia estos archivos en cada restart/redeploy.
+Sin disco persistente, Render perderia estos archivos en cada restart o redeploy.
 
-## Limitacion actual que bloquea deploy real
-Este workspace no es un repo git y no tiene remoto.
-
-Render Blueprints necesitan un repositorio Git accesible por Render. Entonces hoy se puede preparar el Blueprint, pero no aplicarlo desde Dashboard con este workspace tal como esta.
-
-## Paso minimo para desplegar de verdad
-1. Inicializar git si todavia no existe.
-2. Crear un repo en GitHub/GitLab/Bitbucket.
-3. Subir este proyecto con `render.yaml` ya incluido.
-4. En Render, crear el Blueprint desde ese repo.
-5. Confirmar que el worker quede en plan pago con disco persistente.
+## Flujo minimo de deploy
+1. Tener el repo accesible desde GitHub para Render.
+2. Crear el Blueprint desde [render.yaml](/D:/binance_futures_bot/render.yaml).
+3. Confirmar que el servicio quede como `worker`.
+4. Confirmar disco persistente montado en `/app/runtime`.
+5. Confirmar que use [config/render.paper.yaml](/D:/binance_futures_bot/config/render.paper.yaml).
+6. Mantener `binance.use_testnet: true` en la primera etapa operativa para account/orders.
+7. Mantener `binance.use_testnet_market_data: false` para que el paper use velas reales de produccion.
 
 ## Post-deploy minimo
 1. Ver logs del worker.
 2. Confirmar que crea o reutiliza `/app/runtime/...`.
 3. Confirmar que entra en `runtime.mode=paper`.
-4. Confirmar que no falla por falta de data ni permisos de escritura.
-5. Confirmar que `binance.use_testnet=true` siga activo en la primera etapa.
+4. Confirmar que no falla por falta de data ni por permisos de escritura.
+5. Confirmar que el refresh REST efectivamente genera o actualiza CSV `15m`.
 
 ## Riesgos pendientes
-- Sigue siendo paper mode, no live.
-- No hay healthcheck HTTP porque no es un web service.
-- No hay alerting ni observabilidad fuera de logs de Render.
-- No hay websocket ni reconciliacion de ordenes.
+- sigue siendo paper mode, no live,
+- no hay healthcheck HTTP porque no es un web service,
+- no hay alerting ni observabilidad fuera de logs de Render,
+- no hay websocket ni reconciliacion de ordenes,
+- el worker todavia necesita validacion operativa real en Render.
+
+## Criterio de exito de esta fase
+Esta fase queda realmente cerrada solo cuando el worker:
+- builda sin errores,
+- inicia `run_paper.py`,
+- escribe en `/app/runtime`,
+- mantiene estado entre reinicios,
+- y no se cae por falta de datos o de permisos.
