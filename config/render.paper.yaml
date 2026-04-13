@@ -64,20 +64,20 @@ risk:
     ETHUSDT:
       risk_pct: 0.0100
 
-  max_open_positions: 3
+  max_open_positions: 4
 
   max_open_risk:
-    normal: 0.0225
-    offensive: 0.0300
-    absolute: 0.0350
+    normal: 0.0300
+    offensive: 0.0375
+    absolute: 0.0450
 
   loss_limits:
     daily: 0.0200
     weekly: 0.0500
 
 leverage:
-  BTCUSDT: 8
-  ETHUSDT: 8
+  BTCUSDT: 10
+  ETHUSDT: 10
   SOLUSDT: 5
   BNBUSDT: 5
   XRPUSDT: 5

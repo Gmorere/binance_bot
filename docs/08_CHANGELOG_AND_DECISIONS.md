@@ -20,6 +20,13 @@
 
 ## Registro de cambios
 ### 2026-04-13
+- Cambio: perfil `capital v1` aplicado en [render.paper.yaml](/D:/binance_futures_bot/config/render.paper.yaml): `risk.max_open_positions` sube de `3` a `4`, `risk.max_open_risk` pasa a `normal=0.0300`, `offensive=0.0375`, `absolute=0.0450`, y leverage de `BTCUSDT/ETHUSDT` sube de `8x` a `10x`.
+- Motivo: con frecuencia moderada, el cuello principal pasó a ser despliegue efectivo de capital; la configuración previa limitaba simultaneidad y uso de margen aun con setup válido.
+- Impacto esperado: mayor utilización de capital en paper, habilitando hasta tres posiciones fuertes simultáneas bajo bucket `strong` sin saltar a un perfil extremo.
+- Validacion realizada: ajuste acotado a cloud paper para iteración operativa de deployment de capital.
+- Riesgo residual: sube sensibilidad a secuencias adversas y fee drag por mayor exposición; se debe monitorear `open_risk_pct`, `opened` concurrentes y `drawdown` diario/semanal.
+
+### 2026-04-13
 - Cambio: en [render.paper.yaml](/D:/binance_futures_bot/config/render.paper.yaml) se desactiva `strategy.backtest_policy.enforce_context_alignment` y se ajusta `score_thresholds.min_trade` de `70` a `68` (paper only).
 - Motivo: los logs de paper mostraron bloqueo duplicado por contexto (`strategy_policy` por bias neutral/mixto + `dynamic_risk` que ya incorpora alineación/contexto en el score), además de descarte limítrofe con `score=68.00`.
 - Impacto esperado: destrabar flujo de entradas en paper sin tocar lógica de riesgo/sizing ni baseline de backtest.
