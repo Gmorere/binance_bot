@@ -694,13 +694,19 @@ def _diagnose_no_candidate(
     symbol_filters = resolve_symbol_filters(dict(config), symbol)
     symbol_allowed_setups = resolve_symbol_allowed_setups(dict(config), symbol)
     pullback_settings = resolve_pullback_settings(dict(config), symbol)
+    min_candles = int(symbol_filters.get("min_candles", 6))
+    max_candles = int(symbol_filters.get("max_candles", 12))
+    if min_candles < 2:
+        min_candles = 2
+    if max_candles < min_candles:
+        max_candles = min_candles
     reasons: list[str] = []
 
     if "BREAKOUT" in symbol_allowed_setups:
         breakout_setup = detect_breakout_setup(
             df_15m=history_df,
-            min_candles=6,
-            max_candles=12,
+            min_candles=min_candles,
+            max_candles=max_candles,
             max_range_atr_multiple=float(
                 symbol_filters.get("max_consolidation_range_atr_multiple", 1.2)
             ),
@@ -858,14 +864,20 @@ def run_paper_cycle(
             symbol_filters = resolve_symbol_filters(dict(config), symbol_arg)
             symbol_allowed_setups = resolve_symbol_allowed_setups(dict(config), symbol_arg)
             pullback_settings = resolve_pullback_settings(dict(config), symbol_arg)
+            min_candles = int(symbol_filters.get("min_candles", 6))
+            max_candles = int(symbol_filters.get("max_candles", 12))
+            if min_candles < 2:
+                min_candles = 2
+            if max_candles < min_candles:
+                max_candles = min_candles
             return detect_trade_candidate(
                 symbol=symbol_arg,
                 market_df=market_df_arg,
                 trigger_index=trigger_index_arg,
                 entry_reference_price=entry_reference_price,
                 stop_buffer_atr_fraction=float(symbol_filters.get("stop_buffer_atr_fraction", 0.10)),
-                min_candles=6,
-                max_candles=12,
+                min_candles=min_candles,
+                max_candles=max_candles,
                 max_range_atr_multiple=float(symbol_filters.get("max_consolidation_range_atr_multiple", 1.2)),
                 min_volume_ratio=float(symbol_filters.get("min_breakout_volume_multiple", 1.0)),
                 max_trigger_candle_atr_multiple=float(symbol_filters.get("max_trigger_candle_atr_multiple", 1.8)),

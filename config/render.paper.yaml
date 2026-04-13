@@ -99,13 +99,19 @@ execution:
 filters:
   min_rr_net: 1.8
   stop_buffer_atr_fraction: 0.10
+  min_candles: 4
+  max_candles: 24
   min_breakout_volume_multiple: 1.0
   max_consolidation_range_atr_multiple: 1.4
   max_trigger_candle_atr_multiple: 1.8
   by_symbol:
     BTCUSDT:
+      min_candles: 5
+      max_candles: 20
       max_consolidation_range_atr_multiple: 1.5
     ETHUSDT:
+      min_candles: 4
+      max_candles: 24
       max_consolidation_range_atr_multiple: 1.8
 
 pullback:

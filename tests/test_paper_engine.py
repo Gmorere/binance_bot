@@ -494,6 +494,36 @@ class PaperEngineTests(unittest.TestCase):
         self.assertEqual(position.risk_bucket, "small")
         self.assertTrue(any("preserva riesgo base del simbolo en paper" in note for note in position.notes))
 
+    def test_paper_cycle_uses_configured_breakout_window_by_symbol(self) -> None:
+        self.config["filters"]["min_candles"] = 4  # type: ignore[index]
+        self.config["filters"]["max_candles"] = 24  # type: ignore[index]
+        self.config["filters"]["by_symbol"] = {"BTCUSDT": {"min_candles": 5, "max_candles": 20}}  # type: ignore[index]
+        market_df = _build_market_df(
+            [
+                {
+                    "timestamp": pd.Timestamp("2026-01-01T08:30:00Z"),
+                    "open": 106.5,
+                    "high": 106.8,
+                    "low": 106.3,
+                    "close": 106.6,
+                    "volume": 900,
+                }
+            ]
+        )
+        state = create_initial_paper_state(10000.0)
+
+        with patch("src.live.paper_engine.detect_trade_candidate", return_value=None) as detect_mock:
+            run_paper_cycle(
+                config=self.config,
+                market_data_by_symbol={"BTCUSDT": market_df},
+                state=state,
+            )
+
+        self.assertTrue(detect_mock.called)
+        kwargs = detect_mock.call_args.kwargs
+        self.assertEqual(kwargs["min_candles"], 5)
+        self.assertEqual(kwargs["max_candles"], 20)
+
 
     def test_save_paper_state_writes_atomically_without_temp_leftovers(self) -> None:
         state = create_initial_paper_state(10000.0)

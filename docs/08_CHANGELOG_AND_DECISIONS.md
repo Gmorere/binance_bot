@@ -20,6 +20,13 @@
 
 ## Registro de cambios
 ### 2026-04-13
+- Cambio: `paper_engine` deja de hardcodear ventana de consolidación para breakout (`min_candles`/`max_candles`) y pasa a leerla desde `filters` con soporte `by_symbol`; se aplicó tuning en [render.paper.yaml](/D:/binance_futures_bot/config/render.paper.yaml).
+- Motivo: el diagnóstico en logs seguía mostrando `BREAKOUT=No se detectó consolidación válida` incluso después de ajustar otros parámetros, porque la ventana estaba fija en código (`6-12`) y no seguía config.
+- Impacto esperado: habilitar tuning real de estructura de consolidación en paper sin tocar lógica de riesgo/sizing.
+- Validacion realizada: test nuevo en [test_paper_engine.py](/D:/binance_futures_bot/tests/test_paper_engine.py) verificando paso de `min_candles/max_candles` por símbolo.
+- Riesgo residual: abrir demasiado la ventana puede aumentar ruido y falsos breakouts; requiere seguimiento con `opened` y calidad de cierres.
+
+### 2026-04-13
 - Cambio: tuning de detección estructural en [render.paper.yaml](/D:/binance_futures_bot/config/render.paper.yaml) tras diagnóstico de `no_candidate`: `max_consolidation_range_atr_multiple` sube (global `1.4`, BTC `1.5`, ETH `1.8`) y se agrega bloque `pullback` más permisivo (lookback/retrace/impulse).
 - Motivo: los logs mostraron bloqueo explícito en etapa de setup (`BREAKOUT=No se detectó consolidación válida` y `PULLBACK=No se detecto estructura de pullback valida`).
 - Impacto esperado: aumentar candidatos evaluables por ciclo sin tocar por ahora límites de riesgo/sizing/capital.
