@@ -121,6 +121,8 @@ binance:
   recv_window_ms: 5000
   timeout_seconds: 30
   market_data_limit: 500
+  rest_max_retries: 2
+  rest_retry_backoff_ms: 1000
 ```
 
 ## Archivos de deploy
@@ -151,6 +153,8 @@ binance:
 - `data.refresh_from_binance_rest`: si `true`, antes de cada snapshot de paper mode se refresca el CSV del timeframe de entrada desde Binance REST.
 - `data.candle_close_grace_seconds`: segundos extra de espera despues del cierre teorico de la vela antes de permitir otro refresh REST.
 - `binance.market_data_limit`: tamanio maximo de cada request de klines REST. Binance permite hasta `1500`.
+- `binance.rest_max_retries`: reintentos maximos del refresh REST ante errores transitorios (`429/5xx` o fallos de red). No reintenta errores no transitorios como `451`.
+- `binance.rest_retry_backoff_ms`: backoff base en milisegundos para reintentos REST. Se aplica exponencial (`base * 2^n`).
 - `binance.use_testnet`: gobierna el cliente Binance para account/orders.
 - `binance.use_testnet_market_data`: permite separar el feed de market data del path de ordenes. Default recomendado para paper: `false`, asi el paper usa velas reales de produccion aunque el cliente Binance siga en testnet.
 

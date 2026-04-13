@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
+import time
 
 import pandas as pd
 import requests
@@ -50,6 +51,9 @@ def fetch_binance_klines(
     *,
     base_url: str = BASE_URL,
     timeout_seconds: int = 30,
+    max_retries: int = 2,
+    retry_backoff_ms: int = 1000,
+    sleep_fn: Callable[[float], None] = time.sleep,
     session: requests.Session | None = None,
 ) -> list[list[Any]]:
     _validate_supported_timeframe(timeframe)
@@ -57,6 +61,10 @@ def fetch_binance_klines(
         raise BinanceKlineUpdaterError("symbol no puede venir vacío.")
     if limit <= 0 or limit > 1500:
         raise BinanceKlineUpdaterError("limit debe estar entre 1 y 1500.")
+    if max_retries < 0:
+        raise BinanceKlineUpdaterError("max_retries no puede ser negativo.")
+    if retry_backoff_ms <= 0:
+        raise BinanceKlineUpdaterError("retry_backoff_ms debe ser mayor a 0.")
 
     params: dict[str, Any] = {
         "symbol": symbol,
@@ -66,24 +74,42 @@ def fetch_binance_klines(
     if start_time_ms is not None:
         params["startTime"] = start_time_ms
 
+    retryable_status_codes = {429, 500, 502, 503, 504}
     http = session or requests.Session()
-    try:
-        response = http.get(
-            f"{base_url}/fapi/v1/klines",
-            params=params,
-            timeout=timeout_seconds,
-        )
-        response.raise_for_status()
-    except requests.RequestException as exc:
-        raise BinanceKlineUpdaterError(
-            f"Error consultando klines Binance para {symbol} {timeframe}: {exc}"
-        ) from exc
-
-    payload = response.json()
-    if not isinstance(payload, list):
-        raise BinanceKlineUpdaterError("Respuesta inesperada de klines Binance.")
-
-    return payload
+    attempt = 0
+    while True:
+        try:
+            response = http.get(
+                f"{base_url}/fapi/v1/klines",
+                params=params,
+                timeout=timeout_seconds,
+            )
+            response.raise_for_status()
+            payload = response.json()
+            if not isinstance(payload, list):
+                raise BinanceKlineUpdaterError("Respuesta inesperada de klines Binance.")
+            return payload
+        except requests.HTTPError as exc:
+            status_code = (
+                int(exc.response.status_code)
+                if exc.response is not None and exc.response.status_code is not None
+                else None
+            )
+            if status_code in retryable_status_codes and attempt < max_retries:
+                sleep_fn((retry_backoff_ms * (2**attempt)) / 1000.0)
+                attempt += 1
+                continue
+            raise BinanceKlineUpdaterError(
+                f"Error consultando klines Binance para {symbol} {timeframe}: {exc}"
+            ) from exc
+        except requests.RequestException as exc:
+            if attempt < max_retries:
+                sleep_fn((retry_backoff_ms * (2**attempt)) / 1000.0)
+                attempt += 1
+                continue
+            raise BinanceKlineUpdaterError(
+                f"Error consultando klines Binance para {symbol} {timeframe}: {exc}"
+            ) from exc
 
 
 def normalize_rest_klines(raw_klines: list[list[Any]]) -> pd.DataFrame:
@@ -200,6 +226,8 @@ def refresh_symbol_timeframe_csv(
     limit: int = 500,
     base_url: str = BASE_URL,
     timeout_seconds: int = 30,
+    max_retries: int = 2,
+    retry_backoff_ms: int = 1000,
 ) -> RefreshResult:
     file_path = build_symbol_file_path(raw_data_path, symbol, timeframe)
     if file_path.exists():
@@ -216,6 +244,8 @@ def refresh_symbol_timeframe_csv(
             limit=batch_limit,
             base_url=base_url,
             timeout_seconds=timeout_seconds,
+            max_retries=max_retries,
+            retry_backoff_ms=retry_backoff_ms,
         )
 
     refreshed_df = refresh_ohlcv_dataframe(

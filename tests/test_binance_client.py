@@ -67,6 +67,8 @@ class RuntimeConfigTests(unittest.TestCase):
         self.assertTrue(runtime.use_testnet)
         self.assertFalse(runtime.use_testnet_market_data)
         self.assertEqual(runtime.exchange, "binance_usdm")
+        self.assertEqual(runtime.rest_max_retries, 2)
+        self.assertEqual(runtime.rest_retry_backoff_ms, 1000)
         self.assertEqual(runtime.backtest_risk_bucket, "normal")
         self.assertEqual(runtime.paper_risk_bucket, "normal")
         self.assertEqual(runtime.candle_close_grace_seconds, 3)

@@ -133,3 +133,5 @@ binance:
   recv_window_ms: 5000
   timeout_seconds: 30
   market_data_limit: 500
+  rest_max_retries: 2
+  rest_retry_backoff_ms: 1000

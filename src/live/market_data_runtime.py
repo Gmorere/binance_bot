@@ -120,6 +120,8 @@ class PollingMarketDataService:
                     limit=self.runtime.market_data_limit,
                     base_url=base_url,
                     timeout_seconds=self.runtime.timeout_seconds,
+                    max_retries=self.runtime.rest_max_retries,
+                    retry_backoff_ms=self.runtime.rest_retry_backoff_ms,
                 )
                 results.append(result)
                 self.output_fn(

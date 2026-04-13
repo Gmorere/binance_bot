@@ -132,6 +132,8 @@ class MarketDataRuntimeTests(unittest.TestCase):
 
         self.assertEqual(len(captured_calls), 1)
         self.assertEqual(captured_calls[0]["base_url"], "https://fapi.binance.com")
+        self.assertEqual(captured_calls[0]["max_retries"], 2)
+        self.assertEqual(captured_calls[0]["retry_backoff_ms"], 1000)
 
     def test_polling_service_respects_next_candle_close_before_refreshing_again(self) -> None:
         self.config["data"]["refresh_from_binance_rest"] = True  # type: ignore[index]

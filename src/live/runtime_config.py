@@ -20,6 +20,8 @@ class RuntimeConfig:
     recv_window_ms: int
     timeout_seconds: int
     market_data_limit: int
+    rest_max_retries: int
+    rest_retry_backoff_ms: int
     poll_interval_seconds: int
     backtest_risk_bucket: str
     paper_risk_bucket: str
@@ -52,6 +54,8 @@ def load_runtime_config(
     recv_window_ms = int(exchange_cfg.get("recv_window_ms", 5000))
     timeout_seconds = int(exchange_cfg.get("timeout_seconds", 30))
     market_data_limit = int(exchange_cfg.get("market_data_limit", 500))
+    rest_max_retries = int(exchange_cfg.get("rest_max_retries", 2))
+    rest_retry_backoff_ms = int(exchange_cfg.get("rest_retry_backoff_ms", 1000))
     poll_interval_seconds = int(runtime_cfg.get("poll_interval_seconds", 15))
     backtest_risk_bucket = str(
         runtime_cfg.get("backtest_risk_bucket", "normal")
@@ -68,6 +72,10 @@ def load_runtime_config(
         raise RuntimeConfigError("binance.timeout_seconds debe ser mayor a 0.")
     if market_data_limit <= 0 or market_data_limit > 1500:
         raise RuntimeConfigError("binance.market_data_limit debe estar entre 1 y 1500.")
+    if rest_max_retries < 0:
+        raise RuntimeConfigError("binance.rest_max_retries no puede ser negativo.")
+    if rest_retry_backoff_ms <= 0:
+        raise RuntimeConfigError("binance.rest_retry_backoff_ms debe ser mayor a 0.")
     if poll_interval_seconds <= 0:
         raise RuntimeConfigError("runtime.poll_interval_seconds debe ser mayor a 0.")
     if candle_close_grace_seconds < 0:
@@ -89,6 +97,8 @@ def load_runtime_config(
         recv_window_ms=recv_window_ms,
         timeout_seconds=timeout_seconds,
         market_data_limit=market_data_limit,
+        rest_max_retries=rest_max_retries,
+        rest_retry_backoff_ms=rest_retry_backoff_ms,
         poll_interval_seconds=poll_interval_seconds,
         backtest_risk_bucket=backtest_risk_bucket,
         paper_risk_bucket=paper_risk_bucket,

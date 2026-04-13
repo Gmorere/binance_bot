@@ -3,12 +3,45 @@ from __future__ import annotations
 import unittest
 
 import pandas as pd
+import requests
 
 from src.data.binance_kline_updater import (
+    BinanceKlineUpdaterError,
     filter_closed_klines,
+    fetch_binance_klines,
     merge_ohlcv_frames,
     refresh_ohlcv_dataframe,
 )
+
+
+class _FakeResponse:
+    def __init__(self, status_code: int, payload: list[list[object]] | None = None) -> None:
+        self.status_code = status_code
+        self._payload = payload if payload is not None else []
+
+    def raise_for_status(self) -> None:
+        if self.status_code >= 400:
+            error = requests.HTTPError(f"{self.status_code} error")
+            error.response = self
+            raise error
+
+    def json(self) -> list[list[object]]:
+        return self._payload
+
+
+class _SequencedSession:
+    def __init__(self, responses: list[object]) -> None:
+        self._responses = list(responses)
+        self.call_count = 0
+
+    def get(self, *_args: object, **_kwargs: object) -> _FakeResponse:
+        self.call_count += 1
+        if not self._responses:
+            raise RuntimeError("No hay mas respuestas configuradas.")
+        next_response = self._responses.pop(0)
+        if isinstance(next_response, Exception):
+            raise next_response
+        return next_response  # type: ignore[return-value]
 
 
 class BinanceKlineUpdaterTests(unittest.TestCase):
@@ -116,6 +149,72 @@ class BinanceKlineUpdaterTests(unittest.TestCase):
 
         self.assertEqual(len(refreshed), 2)
         self.assertEqual(str(refreshed.iloc[-1]["timestamp"]), "2026-01-01 00:15:00+00:00")
+
+    def test_fetch_binance_klines_retries_on_retryable_http_status(self) -> None:
+        session = _SequencedSession(
+            [
+                _FakeResponse(status_code=503),
+                _FakeResponse(status_code=200, payload=[[1, "1", "1", "1", "1", "1"]]),
+            ]
+        )
+        sleep_calls: list[float] = []
+
+        result = fetch_binance_klines(
+            "BTCUSDT",
+            "15m",
+            session=session,  # type: ignore[arg-type]
+            max_retries=2,
+            retry_backoff_ms=1000,
+            sleep_fn=sleep_calls.append,
+        )
+
+        self.assertEqual(session.call_count, 2)
+        self.assertEqual(sleep_calls, [1.0])
+        self.assertEqual(result, [[1, "1", "1", "1", "1", "1"]])
+
+    def test_fetch_binance_klines_does_not_retry_on_non_retryable_http_status(self) -> None:
+        session = _SequencedSession(
+            [
+                _FakeResponse(status_code=451),
+                _FakeResponse(status_code=200, payload=[[1, "1", "1", "1", "1", "1"]]),
+            ]
+        )
+        sleep_calls: list[float] = []
+
+        with self.assertRaises(BinanceKlineUpdaterError):
+            fetch_binance_klines(
+                "BTCUSDT",
+                "15m",
+                session=session,  # type: ignore[arg-type]
+                max_retries=2,
+                retry_backoff_ms=1000,
+                sleep_fn=sleep_calls.append,
+            )
+
+        self.assertEqual(session.call_count, 1)
+        self.assertEqual(sleep_calls, [])
+
+    def test_fetch_binance_klines_retries_on_request_exception(self) -> None:
+        session = _SequencedSession(
+            [
+                requests.ConnectionError("network down"),
+                _FakeResponse(status_code=200, payload=[[1, "1", "1", "1", "1", "1"]]),
+            ]
+        )
+        sleep_calls: list[float] = []
+
+        result = fetch_binance_klines(
+            "BTCUSDT",
+            "15m",
+            session=session,  # type: ignore[arg-type]
+            max_retries=2,
+            retry_backoff_ms=500,
+            sleep_fn=sleep_calls.append,
+        )
+
+        self.assertEqual(session.call_count, 2)
+        self.assertEqual(sleep_calls, [0.5])
+        self.assertEqual(result, [[1, "1", "1", "1", "1", "1"]])
 
 
 if __name__ == "__main__":
