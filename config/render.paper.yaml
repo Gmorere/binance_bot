@@ -47,7 +47,7 @@ strategy:
         - "SHORT"
 
 score_thresholds:
-  min_trade: 75
+  min_trade: 70
   aggressive: 85
   exceptional: 93
 
@@ -100,7 +100,7 @@ filters:
   stop_buffer_atr_fraction: 0.10
   min_breakout_volume_multiple: 1.0
   max_consolidation_range_atr_multiple: 1.2
-  max_trigger_candle_atr_multiple: 1.6
+  max_trigger_candle_atr_multiple: 1.8
   by_symbol:
     BTCUSDT:
       max_consolidation_range_atr_multiple: 1.2

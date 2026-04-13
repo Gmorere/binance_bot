@@ -20,6 +20,13 @@
 
 ## Registro de cambios
 ### 2026-04-13
+- Cambio: tuning operativo de paper en [render.paper.yaml](/D:/binance_futures_bot/config/render.paper.yaml) para aumentar frecuencia de candidatos: `score_thresholds.min_trade` baja de `75` a `70` y `filters.max_trigger_candle_atr_multiple` sube de `1.6` a `1.8`.
+- Motivo: logs reales del worker mostraron `decisions={'no_candidate': 2}` de forma sostenida en BTC/ETH.
+- Impacto esperado: convertir parte del `no_candidate` en candidatos evaluables sin tocar todavia limites de capital, leverage ni riesgo agregado.
+- Validacion realizada: ajuste acotado de config deployable en paper cloud, sin cambios de código.
+- Riesgo residual: puede subir frecuencia a costa de calidad de setup; requiere monitorear `opened`, `strategy_policy`, `dynamic_risk`, `sizing` y resultado neto por trade.
+
+### 2026-04-13
 - Cambio: hardening de `PollingMarketDataService` para errores de refresh REST (`418` y afines): ahora loguea `data_refresh_error`, mantiene snapshot cacheado/local y aplica `data_refresh_error_backoff` en vez de caerse.
 - Motivo: en Render el worker podia quedar en crash-loop por respuestas `418` de Binance Futures aun cuando ya habia dataset local util.
 - Impacto esperado: continuidad operativa del paper worker con degradacion controlada (datos stale temporales) en vez de interrupcion total.
