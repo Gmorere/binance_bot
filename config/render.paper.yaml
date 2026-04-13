@@ -102,17 +102,17 @@ filters:
   min_candles: 4
   max_candles: 24
   min_breakout_volume_multiple: 1.0
-  max_consolidation_range_atr_multiple: 1.4
+  max_consolidation_range_atr_multiple: 2.0
   max_trigger_candle_atr_multiple: 1.8
   by_symbol:
     BTCUSDT:
       min_candles: 5
       max_candles: 20
-      max_consolidation_range_atr_multiple: 1.5
+      max_consolidation_range_atr_multiple: 2.2
     ETHUSDT:
       min_candles: 4
       max_candles: 24
-      max_consolidation_range_atr_multiple: 1.8
+      max_consolidation_range_atr_multiple: 2.6
 
 pullback:
   impulse_lookback_candles: 8

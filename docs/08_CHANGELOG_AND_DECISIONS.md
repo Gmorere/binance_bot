@@ -20,6 +20,13 @@
 
 ## Registro de cambios
 ### 2026-04-13
+- Cambio: segundo ajuste de desbloqueo estructural en paper para breakout: `max_consolidation_range_atr_multiple` elevado a `2.0` global, `BTC=2.2`, `ETH=2.6` en [render.paper.yaml](/D:/binance_futures_bot/config/render.paper.yaml).
+- Motivo: tras habilitar ventana de velas configurable, el diagnóstico seguía en `BREAKOUT=No se detectó consolidación válida` con parámetros previos.
+- Impacto esperado: aumentar significativamente la probabilidad de detectar consolidaciones en contexto real de mercado y habilitar evaluación de filtros posteriores.
+- Validacion realizada: cambio acotado a configuración paper para iteración rápida operativa.
+- Riesgo residual: puede subir ruido de entradas; se debe observar si el cuello migra a `strategy_policy/dynamic_risk/sizing` y la calidad de cierres.
+
+### 2026-04-13
 - Cambio: `paper_engine` deja de hardcodear ventana de consolidación para breakout (`min_candles`/`max_candles`) y pasa a leerla desde `filters` con soporte `by_symbol`; se aplicó tuning en [render.paper.yaml](/D:/binance_futures_bot/config/render.paper.yaml).
 - Motivo: el diagnóstico en logs seguía mostrando `BREAKOUT=No se detectó consolidación válida` incluso después de ajustar otros parámetros, porque la ventana estaba fija en código (`6-12`) y no seguía config.
 - Impacto esperado: habilitar tuning real de estructura de consolidación en paper sin tocar lógica de riesgo/sizing.
