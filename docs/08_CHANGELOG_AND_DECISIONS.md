@@ -20,6 +20,13 @@
 
 ## Registro de cambios
 ### 2026-04-13
+- Cambio: tuning de detección estructural en [render.paper.yaml](/D:/binance_futures_bot/config/render.paper.yaml) tras diagnóstico de `no_candidate`: `max_consolidation_range_atr_multiple` sube (global `1.4`, BTC `1.5`, ETH `1.8`) y se agrega bloque `pullback` más permisivo (lookback/retrace/impulse).
+- Motivo: los logs mostraron bloqueo explícito en etapa de setup (`BREAKOUT=No se detectó consolidación válida` y `PULLBACK=No se detecto estructura de pullback valida`).
+- Impacto esperado: aumentar candidatos evaluables por ciclo sin tocar por ahora límites de riesgo/sizing/capital.
+- Validacion realizada: cambio acotado de configuración operativa paper con diagnóstico basado en logs.
+- Riesgo residual: al relajar estructura puede entrar ruido; hay que monitorear si suben `opened` pero empeora la calidad de cierres (`STOP` / neto por trade).
+
+### 2026-04-13
 - Cambio: habilitado `PULLBACK` solo para `ETHUSDT` en [render.paper.yaml](/D:/binance_futures_bot/config/render.paper.yaml) dentro de `strategy.allowed_setups_by_symbol`.
 - Motivo: con `BTC/ETH` ambos en `no_candidate`, la frecuencia real quedo por debajo del minimo util para validar mejoras economicas.
 - Impacto esperado: aumentar flujo de candidatos en paper sin alterar `BTCUSDT` ni los limites de riesgo/sizing ya vigentes.
