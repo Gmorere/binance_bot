@@ -88,7 +88,10 @@ def run_paper_runtime_loop(
             save_paper_state(state, state_path)
             cycles_with_new_candles += 1
             output_fn(
-                f"opened={result.opened_symbols} closed={result.closed_symbols} updated={result.updated_symbols} equity={state.equity:.4f}"
+                "opened="
+                f"{result.opened_symbols} closed={result.closed_symbols} "
+                f"updated={result.updated_symbols} equity={state.equity:.4f} "
+                f"decisions={result.decision_counts}"
             )
             for event in result.events[-10:]:
                 output_fn(f"event={event}")

@@ -19,6 +19,13 @@
 7. El deploy cloud concreto elegido hoy es Render worker con disco persistente.
 
 ## Registro de cambios
+### 2026-04-13
+- Cambio: `paper_engine` ahora clasifica el resultado por simbolo en cada ciclo (`opened`, `no_candidate`, `strategy_policy`, `dynamic_risk`, `portfolio_limits`, `sizing`, etc.) y `paper_runtime` lo expone en logs como `decisions={...}`.
+- Motivo: el worker en Render podia quedar "vivo pero sin trades" sin explicar causa raiz operativa; faltaba observabilidad directa para separar ausencia de setup vs bloqueos de politica/riesgo/sizing.
+- Impacto esperado: diagnostico mas rapido de frecuencia real y uso de capital, con evidencia accionable para tuning de estrategia y limites.
+- Validacion realizada: tests actualizados en [test_paper_engine.py](/D:/binance_futures_bot/tests/test_paper_engine.py) y [test_paper_runtime.py](/D:/binance_futures_bot/tests/test_paper_runtime.py), incluyendo casos `opened`, `strategy_policy` y `no_candidate`.
+- Riesgo residual: esto mejora observabilidad, pero no implementa alertas proactivas ni reconciliacion live.
+
 ### 2026-04-02
 - Cambio: cambio de region por default del worker Render de `oregon` a `frankfurt` en [render.yaml](/D:/binance_futures_bot/render.yaml).
 - Motivo: el deploy ya buildaba y arrancaba, pero el runtime en `Oregon, USA` recibia `451` desde `https://fapi.binance.com/fapi/v1/klines`; el problema ya no era el bot sino el egress de una region US contra Binance Futures.

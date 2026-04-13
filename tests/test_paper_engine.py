@@ -149,6 +149,8 @@ class PaperEngineTests(unittest.TestCase):
         )
 
         self.assertEqual(result.opened_symbols, ["BTCUSDT"])
+        self.assertEqual(result.decision_counts.get("opened"), 1)
+        self.assertEqual(result.symbol_decisions.get("BTCUSDT"), "opened")
         self.assertIn("BTCUSDT", result.state.open_positions)
         self.assertLess(result.state.equity, 10000.0)
         self.assertGreater(result.state.open_risk_pct, 0.0)
@@ -355,6 +357,8 @@ class PaperEngineTests(unittest.TestCase):
         )
 
         self.assertEqual(result.opened_symbols, [])
+        self.assertEqual(result.decision_counts.get("strategy_policy"), 1)
+        self.assertEqual(result.symbol_decisions.get("BTCUSDT"), "strategy_policy")
         self.assertNotIn("BTCUSDT", result.state.open_positions)
         self.assertTrue(any("strategy_policy" in event for event in result.events))
 
@@ -408,6 +412,33 @@ class PaperEngineTests(unittest.TestCase):
         self.assertEqual(result.opened_symbols, [])
         self.assertNotIn("BTCUSDT", result.state.open_positions)
         self.assertTrue(any("dynamic_risk" in event for event in result.events))
+
+    def test_paper_cycle_registers_no_candidate_decision(self) -> None:
+        market_df = _build_market_df(
+            [
+                {
+                    "timestamp": pd.Timestamp("2026-01-01T08:30:00Z"),
+                    "open": 106.5,
+                    "high": 106.8,
+                    "low": 106.3,
+                    "close": 106.6,
+                    "volume": 900,
+                }
+            ]
+        )
+        state = create_initial_paper_state(10000.0)
+
+        with patch("src.live.paper_engine.scan_trade_candidates", return_value=[]):
+            result = run_paper_cycle(
+                config=self.config,
+                market_data_by_symbol={"BTCUSDT": market_df},
+                state=state,
+            )
+
+        self.assertEqual(result.opened_symbols, [])
+        self.assertEqual(result.decision_counts.get("no_candidate"), 1)
+        self.assertEqual(result.symbol_decisions.get("BTCUSDT"), "no_candidate")
+        self.assertTrue(any("SKIP BTCUSDT no_candidate" in event for event in result.events))
 
     def test_paper_cycle_preserves_symbol_base_risk_when_dynamic_score_is_lower(self) -> None:
         self.config["strategy"]["dynamic_risk_by_score"] = {"enabled": True, "preserve_symbol_base_risk": True}  # type: ignore[index]

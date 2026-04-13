@@ -187,6 +187,7 @@ class PaperRuntimeTests(unittest.TestCase):
         self.assertEqual(summary.cycles_with_new_candles, 1)
         self.assertTrue(summary.last_state_path.exists())
         self.assertEqual(sleep_calls, [1.5])
+        self.assertTrue(any("decisions=" in line for line in outputs))
         self.assertTrue(any("sleep_seconds=1.500" in line for line in outputs))
         self.assertTrue(any("no_new_candles" in line for line in outputs))
 

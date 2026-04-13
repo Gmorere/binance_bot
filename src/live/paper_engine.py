@@ -91,6 +91,8 @@ class PaperCycleResult:
     closed_symbols: list[str]
     updated_symbols: list[str]
     events: list[str]
+    decision_counts: dict[str, int] = field(default_factory=dict)
+    symbol_decisions: dict[str, str] = field(default_factory=dict)
 
 
 TP1_FRACTION = 0.40
@@ -201,6 +203,17 @@ def _append_event(state: PaperState, events: list[str], message: str) -> None:
     if len(state.event_log) > MAX_EVENT_LOG:
         state.event_log = state.event_log[-MAX_EVENT_LOG:]
     events.append(message)
+
+
+def _record_symbol_decision(
+    *,
+    symbol: str,
+    decision: str,
+    decision_counts: dict[str, int],
+    symbol_decisions: dict[str, str],
+) -> None:
+    decision_counts[decision] = decision_counts.get(decision, 0) + 1
+    symbol_decisions[symbol] = decision
 
 
 def _apply_realized_delta(state: PaperState, delta_net_usdt: float) -> None:
@@ -708,6 +721,8 @@ def run_paper_cycle(
     closed_symbols: list[str] = []
     updated_symbols: list[str] = []
     events: list[str] = []
+    decision_counts: dict[str, int] = {}
+    symbol_decisions: dict[str, str] = {}
 
     eligible_market_data: dict[str, pd.DataFrame] = {}
     eligible_trigger_indices: dict[str, int] = {}
@@ -743,6 +758,12 @@ def run_paper_cycle(
                     closed_symbols.append(symbol)
                     break
             updated_symbols.append(symbol)
+            _record_symbol_decision(
+                symbol=symbol,
+                decision="managed_open_position",
+                decision_counts=decision_counts,
+                symbol_decisions=symbol_decisions,
+            )
 
         latest_timestamp = str(pd.to_datetime(pending_candles.iloc[-1]["timestamp"], utc=True))
         state.processed_candle_timestamps[symbol] = latest_timestamp
@@ -751,6 +772,12 @@ def run_paper_cycle(
             continue
 
         if symbol in state.open_positions:
+            _record_symbol_decision(
+                symbol=symbol,
+                decision="managed_open_position",
+                decision_counts=decision_counts,
+                symbol_decisions=symbol_decisions,
+            )
             continue
 
         eligible_market_data[symbol] = market_df
@@ -802,7 +829,18 @@ def run_paper_cycle(
             trade_candidate_resolver=_resolve_candidate,
         )
 
-        for symbol_candidate in sorted(candidates, key=lambda item: item.symbol):
+        candidates_by_symbol = {item.symbol: item for item in candidates}
+        for symbol in sorted(eligible_market_data.keys()):
+            if symbol not in candidates_by_symbol:
+                _append_event(state, events, f"SKIP {symbol} no_candidate")
+                _record_symbol_decision(
+                    symbol=symbol,
+                    decision="no_candidate",
+                    decision_counts=decision_counts,
+                    symbol_decisions=symbol_decisions,
+                )
+
+        for symbol_candidate in sorted(candidates_by_symbol.values(), key=lambda item: item.symbol):
             symbol = symbol_candidate.symbol
             candidate = symbol_candidate.candidate
             order_plan = candidate.order_plan
@@ -825,12 +863,24 @@ def run_paper_cycle(
                 )
             except ContextPolicyError as exc:
                 _append_event(state, events, f"SKIP {symbol} context_policy_error: {exc}")
+                _record_symbol_decision(
+                    symbol=symbol,
+                    decision="context_policy_error",
+                    decision_counts=decision_counts,
+                    symbol_decisions=symbol_decisions,
+                )
                 continue
 
             if candidate_notes:
                 order_plan.notes.extend(str(note) for note in candidate_notes)
             if not candidate_allowed:
                 _append_event(state, events, f"SKIP {symbol} strategy_policy: {' | '.join(candidate_notes)}")
+                _record_symbol_decision(
+                    symbol=symbol,
+                    decision="strategy_policy",
+                    decision_counts=decision_counts,
+                    symbol_decisions=symbol_decisions,
+                )
                 continue
 
             allowed_by_limits, limit_notes = system_loss_limits_allow_trade(
@@ -841,6 +891,12 @@ def run_paper_cycle(
             )
             if not allowed_by_limits:
                 _append_event(state, events, f"SKIP {symbol} loss_limits: {' | '.join(limit_notes)}")
+                _record_symbol_decision(
+                    symbol=symbol,
+                    decision="loss_limits",
+                    decision_counts=decision_counts,
+                    symbol_decisions=symbol_decisions,
+                )
                 continue
 
             try:
@@ -855,12 +911,24 @@ def run_paper_cycle(
                 )
             except PaperEngineError as exc:
                 _append_event(state, events, f"SKIP {symbol} dynamic_risk_error: {exc}")
+                _record_symbol_decision(
+                    symbol=symbol,
+                    decision="dynamic_risk_error",
+                    decision_counts=decision_counts,
+                    symbol_decisions=symbol_decisions,
+                )
                 continue
 
             if risk_resolution.notes:
                 order_plan.notes.extend(str(note) for note in risk_resolution.notes)
             if not risk_resolution.trade_allowed:
                 _append_event(state, events, f"SKIP {symbol} dynamic_risk: {' | '.join(risk_resolution.notes)}")
+                _record_symbol_decision(
+                    symbol=symbol,
+                    decision="dynamic_risk",
+                    decision_counts=decision_counts,
+                    symbol_decisions=symbol_decisions,
+                )
                 continue
 
             allowed_by_portfolio, portfolio_notes = portfolio_allows_new_trade(
@@ -872,6 +940,12 @@ def run_paper_cycle(
             )
             if not allowed_by_portfolio:
                 _append_event(state, events, f"SKIP {symbol} portfolio_limits: {' | '.join(portfolio_notes)}")
+                _record_symbol_decision(
+                    symbol=symbol,
+                    decision="portfolio_limits",
+                    decision_counts=decision_counts,
+                    symbol_decisions=symbol_decisions,
+                )
                 continue
 
             sizing = calculate_position_size(
@@ -884,6 +958,12 @@ def run_paper_cycle(
             )
             if not sizing.sizing_allowed:
                 _append_event(state, events, f"SKIP {symbol} sizing: {' | '.join(sizing.notes)}")
+                _record_symbol_decision(
+                    symbol=symbol,
+                    decision="sizing",
+                    decision_counts=decision_counts,
+                    symbol_decisions=symbol_decisions,
+                )
                 continue
 
             timestamp = pd.to_datetime(
@@ -902,6 +982,12 @@ def run_paper_cycle(
                 events=events,
             )
             opened_symbols.append(symbol)
+            _record_symbol_decision(
+                symbol=symbol,
+                decision="opened",
+                decision_counts=decision_counts,
+                symbol_decisions=symbol_decisions,
+            )
 
     return PaperCycleResult(
         state=state,
@@ -909,6 +995,8 @@ def run_paper_cycle(
         closed_symbols=closed_symbols,
         updated_symbols=updated_symbols,
         events=events,
+        decision_counts=decision_counts,
+        symbol_decisions=symbol_decisions,
     )
 
 

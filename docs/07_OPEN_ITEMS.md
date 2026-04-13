@@ -31,6 +31,7 @@
 - [x] paper ya puede aplicar el mismo gating `4h/1h` y restricciones por lado del research si la config lo habilita
 - [x] paper ya hace replay candle-by-candle de velas perdidas para gestionar posiciones abiertas
 - [x] `paper_state.json` ya se escribe de forma atomica y tiene test de roundtrip sin residuos temporales
+- [x] paper runtime ya reporta `decision_counts` por ciclo (opened/no_candidate/policy/risk/sizing/etc.) para diagnosticar por que no abre trades
 - [x] `execution.slippage` ya no es decorativo; backtest y paper aplican slippage adverso por simbolo
 - [x] `ExitReason` ya usa un contrato unico entre `src/core/models.py` y `src/execution/execution_simulator.py`
 - [x] `stop_buffer_atr_fraction` ya sale de config y no de un hardcode en el runner

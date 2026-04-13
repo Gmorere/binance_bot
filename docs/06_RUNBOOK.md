@@ -127,6 +127,7 @@ No conviene tratar `live` como si ya existiera. Hoy el camino operativo serio si
 - `data_refresh_skip ...`
 - `data_refresh_schedule ...`
 - `sleep_seconds=...`
+- `opened=... closed=... updated=... equity=... decisions={...}`
 - apertura de trade
 - `risk_bucket=...` en apertura si hubo resolucion de riesgo
 - cierre parcial
