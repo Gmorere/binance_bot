@@ -121,6 +121,7 @@ data:
   outputs_path: "outputs"
   refresh_from_binance_rest: true
   candle_close_grace_seconds: 5
+  refresh_error_backoff_seconds: 120
 
 reporting:
   save_trades_csv: true

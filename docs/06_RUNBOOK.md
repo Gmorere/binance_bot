@@ -84,10 +84,11 @@ No conviene tratar `live` como si ya existiera. Hoy el camino operativo serio si
 ## Refresh REST en paper mode
 - Activar `data.refresh_from_binance_rest: true`.
 - Ajustar `data.candle_close_grace_seconds` si Binance publica la vela cerrada con retraso.
+- Ajustar `data.refresh_error_backoff_seconds` para espaciar reintentos cuando Binance devuelve bloqueos temporales (`418`/throttling infra).
 - Ajustar `binance.market_data_limit` si hace falta acelerar bootstrap o reducir payloads.
 - Ajustar `binance.rest_max_retries` y `binance.rest_retry_backoff_ms` para tolerar cortes REST transitorios (`429/5xx` o red).
 - El updater mergea por timestamp y descarta la vela todavia abierta.
-- Si Binance REST falla con error no transitorio (ejemplo `451`) o supera reintentos, el ciclo falla; no hay fallback silencioso ni reconciliacion automatica.
+- Si Binance REST falla para algun simbolo/timeframe, el runtime loguea `data_refresh_error`, sigue con snapshot local y aplica `data_refresh_error_backoff` antes del proximo intento.
 
 ## Troubleshooting rapido
 ### Render no crea el servicio

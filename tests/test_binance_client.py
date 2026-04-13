@@ -72,6 +72,7 @@ class RuntimeConfigTests(unittest.TestCase):
         self.assertEqual(runtime.backtest_risk_bucket, "normal")
         self.assertEqual(runtime.paper_risk_bucket, "normal")
         self.assertEqual(runtime.candle_close_grace_seconds, 3)
+        self.assertEqual(runtime.refresh_error_backoff_seconds, 120)
 
 
 if __name__ == "__main__":

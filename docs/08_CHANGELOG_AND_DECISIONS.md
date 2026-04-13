@@ -20,6 +20,13 @@
 
 ## Registro de cambios
 ### 2026-04-13
+- Cambio: hardening de `PollingMarketDataService` para errores de refresh REST (`418` y afines): ahora loguea `data_refresh_error`, mantiene snapshot cacheado/local y aplica `data_refresh_error_backoff` en vez de caerse.
+- Motivo: en Render el worker podia quedar en crash-loop por respuestas `418` de Binance Futures aun cuando ya habia dataset local util.
+- Impacto esperado: continuidad operativa del paper worker con degradacion controlada (datos stale temporales) en vez de interrupcion total.
+- Validacion realizada: tests nuevos en [test_market_data_runtime.py](/D:/binance_futures_bot/tests/test_market_data_runtime.py) para `continue on refresh error` y `error backoff`, mas defaults de config en [test_binance_client.py](/D:/binance_futures_bot/tests/test_binance_client.py).
+- Riesgo residual: si el bloqueo de Binance persiste por mucho tiempo, el worker sigue vivo pero opera con datos sin actualizar hasta que se recupere el feed.
+
+### 2026-04-13
 - Cambio: `paper_engine` ahora clasifica el resultado por simbolo en cada ciclo (`opened`, `no_candidate`, `strategy_policy`, `dynamic_risk`, `portfolio_limits`, `sizing`, etc.) y `paper_runtime` lo expone en logs como `decisions={...}`.
 - Motivo: el worker en Render podia quedar "vivo pero sin trades" sin explicar causa raiz operativa; faltaba observabilidad directa para separar ausencia de setup vs bloqueos de politica/riesgo/sizing.
 - Impacto esperado: diagnostico mas rapido de frecuencia real y uso de capital, con evidencia accionable para tuning de estrategia y limites.

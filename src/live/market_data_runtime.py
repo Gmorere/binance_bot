@@ -7,6 +7,7 @@ from typing import Callable, Mapping
 import pandas as pd
 
 from src.data.binance_kline_updater import (
+    BinanceKlineUpdaterError,
     INTERVAL_TO_MS,
     RefreshResult,
     refresh_symbol_timeframe_csv,
@@ -55,6 +56,7 @@ class PollingMarketDataService:
         self.runtime = load_runtime_config(config)
         self._cached_snapshot: MarketDataSnapshot | None = None
         self._next_refresh_after_ms: int | None = None
+        self._last_refresh_error_count: int = 0
 
     def poll(self, *, now_ms: int | None = None) -> MarketDataPollResult:
         resolved_now_ms = _resolve_now_ms(now_ms)
@@ -71,7 +73,16 @@ class PollingMarketDataService:
             )
 
         refresh_results = self.refresh_entry_market_data(now_ms=resolved_now_ms)
-        snapshot = self.load_entry_market_snapshot()
+        try:
+            snapshot = self.load_entry_market_snapshot()
+        except Exception as exc:
+            if self._cached_snapshot is None:
+                raise
+            snapshot = self._cached_snapshot
+            self.output_fn(
+                "data_snapshot_fallback "
+                f"error={type(exc).__name__}: {exc} using_cached_snapshot=true"
+            )
         next_poll_after_ms = resolved_now_ms + int(self.runtime.poll_interval_seconds) * 1000
 
         if self.runtime.refresh_from_binance_rest:
@@ -80,6 +91,17 @@ class PollingMarketDataService:
                 snapshot,
                 now_ms=resolved_now_ms,
             )
+            if self._last_refresh_error_count > 0:
+                error_cooldown_ms = int(self.runtime.refresh_error_backoff_seconds) * 1000
+                self._next_refresh_after_ms = max(
+                    int(self._next_refresh_after_ms),
+                    resolved_now_ms + error_cooldown_ms,
+                )
+                self.output_fn(
+                    "data_refresh_error_backoff "
+                    f"errors={self._last_refresh_error_count} "
+                    f"backoff_seconds={self.runtime.refresh_error_backoff_seconds}"
+                )
             next_poll_after_ms = self._next_refresh_after_ms
             self.output_fn(
                 "data_refresh_schedule "
@@ -110,19 +132,29 @@ class PollingMarketDataService:
         timeframes_to_refresh = _resolve_runtime_timeframes(timeframes_cfg)
 
         results: list[RefreshResult] = []
+        refresh_errors = 0
         for symbol in symbols:
             for timeframe in timeframes_to_refresh:
-                result = self.refresh_symbol_timeframe_csv_fn(
-                    raw_data_path=raw_data_path,
-                    symbol=symbol,
-                    timeframe=timeframe,
-                    now_ms=resolved_now_ms,
-                    limit=self.runtime.market_data_limit,
-                    base_url=base_url,
-                    timeout_seconds=self.runtime.timeout_seconds,
-                    max_retries=self.runtime.rest_max_retries,
-                    retry_backoff_ms=self.runtime.rest_retry_backoff_ms,
-                )
+                try:
+                    result = self.refresh_symbol_timeframe_csv_fn(
+                        raw_data_path=raw_data_path,
+                        symbol=symbol,
+                        timeframe=timeframe,
+                        now_ms=resolved_now_ms,
+                        limit=self.runtime.market_data_limit,
+                        base_url=base_url,
+                        timeout_seconds=self.runtime.timeout_seconds,
+                        max_retries=self.runtime.rest_max_retries,
+                        retry_backoff_ms=self.runtime.rest_retry_backoff_ms,
+                    )
+                except (BinanceKlineUpdaterError, OSError, ValueError) as exc:
+                    refresh_errors += 1
+                    self.output_fn(
+                        "data_refresh_error "
+                        f"symbol={symbol} timeframe={timeframe} error={type(exc).__name__}: {exc}"
+                    )
+                    continue
+
                 results.append(result)
                 self.output_fn(
                     "data_refresh "
@@ -131,6 +163,7 @@ class PollingMarketDataService:
                     f"latest_timestamp={result.latest_timestamp}"
                 )
 
+        self._last_refresh_error_count = refresh_errors
         return results
 
     def load_entry_market_snapshot(self) -> MarketDataSnapshot:

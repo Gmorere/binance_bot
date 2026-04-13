@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from src.data.binance_kline_updater import RefreshResult
+from src.data.binance_kline_updater import BinanceKlineUpdaterError, RefreshResult
 from src.live.market_data_runtime import (
     MarketDataPollResult,
     build_market_data_service,
@@ -134,6 +134,43 @@ class MarketDataRuntimeTests(unittest.TestCase):
         self.assertEqual(captured_calls[0]["base_url"], "https://fapi.binance.com")
         self.assertEqual(captured_calls[0]["max_retries"], 2)
         self.assertEqual(captured_calls[0]["retry_backoff_ms"], 1000)
+
+    def test_refresh_entry_market_data_logs_and_continues_on_refresh_error(self) -> None:
+        self.config["data"]["refresh_from_binance_rest"] = True  # type: ignore[index]
+        outputs: list[str] = []
+
+        def failing_refresh(**_kwargs: object) -> RefreshResult:
+            raise BinanceKlineUpdaterError("418 teapot")
+
+        results = refresh_entry_market_data(
+            self.config,
+            output_fn=outputs.append,
+            refresh_symbol_timeframe_csv_fn=failing_refresh,
+        )
+
+        self.assertEqual(results, [])
+        self.assertTrue(any("data_refresh_error" in line for line in outputs))
+
+    def test_polling_service_applies_error_backoff_after_refresh_error(self) -> None:
+        self.config["data"]["refresh_from_binance_rest"] = True  # type: ignore[index]
+        outputs: list[str] = []
+
+        def failing_refresh(**_kwargs: object) -> RefreshResult:
+            raise BinanceKlineUpdaterError("418 teapot")
+
+        service = build_market_data_service(
+            self.config,
+            output_fn=outputs.append,
+            refresh_symbol_timeframe_csv_fn=failing_refresh,
+        )
+
+        now_ms = int(pd.Timestamp("2026-01-01T01:30:00Z").timestamp() * 1000)
+        poll_result = service.poll(now_ms=now_ms)
+
+        self.assertIsInstance(poll_result, MarketDataPollResult)
+        self.assertEqual(poll_result.refresh_results, [])
+        self.assertEqual(poll_result.next_poll_after_ms, now_ms + 120000)
+        self.assertTrue(any("data_refresh_error_backoff" in line for line in outputs))
 
     def test_polling_service_respects_next_candle_close_before_refreshing_again(self) -> None:
         self.config["data"]["refresh_from_binance_rest"] = True  # type: ignore[index]

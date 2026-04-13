@@ -27,6 +27,7 @@ class RuntimeConfig:
     paper_risk_bucket: str
     refresh_from_binance_rest: bool
     candle_close_grace_seconds: int
+    refresh_error_backoff_seconds: int
 
 
 def load_runtime_config(
@@ -65,6 +66,7 @@ def load_runtime_config(
     ).strip().lower()
     refresh_from_binance_rest = bool(data_cfg.get("refresh_from_binance_rest", False))
     candle_close_grace_seconds = int(data_cfg.get("candle_close_grace_seconds", 3))
+    refresh_error_backoff_seconds = int(data_cfg.get("refresh_error_backoff_seconds", 120))
 
     if recv_window_ms <= 0:
         raise RuntimeConfigError("binance.recv_window_ms debe ser mayor a 0.")
@@ -80,6 +82,8 @@ def load_runtime_config(
         raise RuntimeConfigError("runtime.poll_interval_seconds debe ser mayor a 0.")
     if candle_close_grace_seconds < 0:
         raise RuntimeConfigError("data.candle_close_grace_seconds no puede ser negativo.")
+    if refresh_error_backoff_seconds <= 0:
+        raise RuntimeConfigError("data.refresh_error_backoff_seconds debe ser mayor a 0.")
     if backtest_risk_bucket not in {"small", "normal", "strong", "exceptional"}:
         raise RuntimeConfigError(
             "runtime.backtest_risk_bucket debe ser uno de: small, normal, strong, exceptional."
@@ -104,4 +108,5 @@ def load_runtime_config(
         paper_risk_bucket=paper_risk_bucket,
         refresh_from_binance_rest=refresh_from_binance_rest,
         candle_close_grace_seconds=candle_close_grace_seconds,
+        refresh_error_backoff_seconds=refresh_error_backoff_seconds,
     )

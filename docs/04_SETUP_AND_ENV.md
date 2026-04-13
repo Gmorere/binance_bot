@@ -114,6 +114,7 @@ data:
   outputs_path: outputs
   refresh_from_binance_rest: false
   candle_close_grace_seconds: 3
+  refresh_error_backoff_seconds: 120
 
 binance:
   use_testnet: true
@@ -152,6 +153,7 @@ binance:
 - `execution.slippage`: slippage adverso simple por simbolo. Ya se aplica en backtest y paper tanto en entrada como en salidas normales. Los stops con gap siguen usando el open adverso y no duplican castigo con otro slippage encima.
 - `data.refresh_from_binance_rest`: si `true`, antes de cada snapshot de paper mode se refresca el CSV del timeframe de entrada desde Binance REST.
 - `data.candle_close_grace_seconds`: segundos extra de espera despues del cierre teorico de la vela antes de permitir otro refresh REST.
+- `data.refresh_error_backoff_seconds`: cooldown forzado entre refreshes cuando hubo errores REST (por ejemplo `418`), para evitar loops agresivos y caidas del worker.
 - `binance.market_data_limit`: tamanio maximo de cada request de klines REST. Binance permite hasta `1500`.
 - `binance.rest_max_retries`: reintentos maximos del refresh REST ante errores transitorios (`429/5xx` o fallos de red). No reintenta errores no transitorios como `451`.
 - `binance.rest_retry_backoff_ms`: backoff base en milisegundos para reintentos REST. Se aplica exponencial (`base * 2^n`).
