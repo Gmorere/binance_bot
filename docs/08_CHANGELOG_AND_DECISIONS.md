@@ -20,6 +20,13 @@
 
 ## Registro de cambios
 ### 2026-04-13
+- Cambio: hardening del loop en [paper_runtime.py](/D:/binance_futures_bot/src/live/paper_runtime.py): ahora captura excepciones de ciclo (`poll`, `paper_cycle`, persistencia de estado), loguea `runtime_cycle_error`, aplica backoff (`data.refresh_error_backoff_seconds`) y continúa en modo continuo.
+- Motivo: un error no controlado dentro del ciclo podía tumbar el worker completo aun con deploy sano, afectando continuidad operativa cloud.
+- Impacto esperado: mayor disponibilidad del backend paper en Render; el proceso deja de entrar en crash por errores transitorios del ciclo.
+- Validacion realizada: tests nuevos en [test_paper_runtime.py](/D:/binance_futures_bot/tests/test_paper_runtime.py) para `continue_with_backoff_on_cycle_error` y `fail_fast_in_once_mode_on_cycle_error`.
+- Riesgo residual: ante errores persistentes el worker sigue vivo pero sin operar; requiere observación de `runtime_cycle_error` para corrección de causa raíz.
+
+### 2026-04-13
 - Cambio: perfil `capital v1` aplicado en [render.paper.yaml](/D:/binance_futures_bot/config/render.paper.yaml): `risk.max_open_positions` sube de `3` a `4`, `risk.max_open_risk` pasa a `normal=0.0300`, `offensive=0.0375`, `absolute=0.0450`, y leverage de `BTCUSDT/ETHUSDT` sube de `8x` a `10x`.
 - Motivo: con frecuencia moderada, el cuello principal pasó a ser despliegue efectivo de capital; la configuración previa limitaba simultaneidad y uso de margen aun con setup válido.
 - Impacto esperado: mayor utilización de capital en paper, habilitando hasta tres posiciones fuertes simultáneas bajo bucket `strong` sin saltar a un perfil extremo.

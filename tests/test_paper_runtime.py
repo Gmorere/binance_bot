@@ -13,7 +13,11 @@ from src.live.market_data_runtime import (
     MarketDataSnapshot,
     detect_symbols_with_new_candles,
 )
-from src.live.paper_runtime import _resolve_sleep_seconds, run_paper_runtime_loop
+from src.live.paper_runtime import (
+    PaperRuntimeLoopError,
+    _resolve_sleep_seconds,
+    run_paper_runtime_loop,
+)
 
 
 def _build_breakout_market_df() -> pd.DataFrame:
@@ -190,6 +194,69 @@ class PaperRuntimeTests(unittest.TestCase):
         self.assertTrue(any("decisions=" in line for line in outputs))
         self.assertTrue(any("sleep_seconds=1.500" in line for line in outputs))
         self.assertTrue(any("no_new_candles" in line for line in outputs))
+
+    def test_runtime_loop_continues_with_backoff_on_cycle_error(self) -> None:
+        market_df = _build_breakout_market_df()
+        latest_timestamp = str(pd.to_datetime(market_df.iloc[-1]["timestamp"], utc=True))
+        snapshot = MarketDataSnapshot(
+            entry_timeframe="15m",
+            market_data_by_symbol={"BTCUSDT": market_df},
+            latest_timestamps={"BTCUSDT": latest_timestamp},
+        )
+
+        poll_results = [
+            MarketDataPollResult(snapshot=snapshot, refresh_results=[], next_poll_after_ms=3500),
+            MarketDataPollResult(snapshot=snapshot, refresh_results=[], next_poll_after_ms=4500),
+        ]
+        service = FakeMarketDataService(poll_results)
+        outputs: list[str] = []
+        sleep_calls: list[float] = []
+
+        config_with_error = dict(self.config)
+        config_with_error["leverage"] = {}
+
+        summary = run_paper_runtime_loop(
+            config=config_with_error,
+            max_cycles=2,
+            output_fn=outputs.append,
+            sleep_fn=sleep_calls.append,
+            time_fn=lambda: 2.0,
+            market_data_service=service,
+        )
+
+        self.assertEqual(summary.cycles_executed, 2)
+        self.assertEqual(summary.cycles_with_new_candles, 0)
+        self.assertEqual(sleep_calls, [120.0])
+        self.assertTrue(any("runtime_cycle_error cycle=1" in line for line in outputs))
+        self.assertTrue(
+            any(
+                "sleep_seconds=120.000 reason=runtime_cycle_error" in line
+                for line in outputs
+            )
+        )
+
+    def test_runtime_loop_fail_fast_in_once_mode_on_cycle_error(self) -> None:
+        market_df = _build_breakout_market_df()
+        latest_timestamp = str(pd.to_datetime(market_df.iloc[-1]["timestamp"], utc=True))
+        snapshot = MarketDataSnapshot(
+            entry_timeframe="15m",
+            market_data_by_symbol={"BTCUSDT": market_df},
+            latest_timestamps={"BTCUSDT": latest_timestamp},
+        )
+        service = FakeMarketDataService(
+            [MarketDataPollResult(snapshot=snapshot, refresh_results=[], next_poll_after_ms=3500)]
+        )
+        config_with_error = dict(self.config)
+        config_with_error["leverage"] = {}
+
+        with self.assertRaises(PaperRuntimeLoopError):
+            run_paper_runtime_loop(
+                config=config_with_error,
+                once=True,
+                output_fn=lambda _line: None,
+                sleep_fn=lambda _seconds: None,
+                market_data_service=service,
+            )
 
 
 if __name__ == "__main__":

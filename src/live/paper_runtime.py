@@ -65,38 +65,61 @@ def run_paper_runtime_loop(
     cycles_with_new_candles = 0
 
     while True:
-        poll_result = service.poll()
-        snapshot = poll_result.snapshot
-        new_symbols = detect_symbols_with_new_candles(
-            snapshot.latest_timestamps,
-            state.processed_candle_timestamps,
-        )
-
-        output_fn(
-            f"cycle={cycles_executed + 1} symbols={sorted(snapshot.market_data_by_symbol.keys())} new_candles={new_symbols}"
-        )
-
-        if new_symbols:
-            result = run_paper_cycle(
-                config=config,
-                market_data_by_symbol=snapshot.market_data_by_symbol,
-                bias_market_data_by_symbol=snapshot.bias_market_data_by_symbol,
-                context_market_data_by_symbol=snapshot.context_market_data_by_symbol,
-                state=state,
+        cycle_number = cycles_executed + 1
+        try:
+            poll_result = service.poll()
+            snapshot = poll_result.snapshot
+            new_symbols = detect_symbols_with_new_candles(
+                snapshot.latest_timestamps,
+                state.processed_candle_timestamps,
             )
-            state = result.state
-            save_paper_state(state, state_path)
-            cycles_with_new_candles += 1
+
             output_fn(
-                "opened="
-                f"{result.opened_symbols} closed={result.closed_symbols} "
-                f"updated={result.updated_symbols} equity={state.equity:.4f} "
-                f"decisions={result.decision_counts}"
+                f"cycle={cycle_number} symbols={sorted(snapshot.market_data_by_symbol.keys())} new_candles={new_symbols}"
             )
-            for event in result.events[-10:]:
-                output_fn(f"event={event}")
-        else:
-            output_fn("no_new_candles")
+
+            if new_symbols:
+                result = run_paper_cycle(
+                    config=config,
+                    market_data_by_symbol=snapshot.market_data_by_symbol,
+                    bias_market_data_by_symbol=snapshot.bias_market_data_by_symbol,
+                    context_market_data_by_symbol=snapshot.context_market_data_by_symbol,
+                    state=state,
+                )
+                state = result.state
+                save_paper_state(state, state_path)
+                cycles_with_new_candles += 1
+                output_fn(
+                    "opened="
+                    f"{result.opened_symbols} closed={result.closed_symbols} "
+                    f"updated={result.updated_symbols} equity={state.equity:.4f} "
+                    f"decisions={result.decision_counts}"
+                )
+                for event in result.events[-10:]:
+                    output_fn(f"event={event}")
+            else:
+                output_fn("no_new_candles")
+        except Exception as exc:
+            if once:
+                raise PaperRuntimeLoopError(
+                    f"Error en ciclo paper {cycle_number}: {exc}"
+                ) from exc
+
+            output_fn(
+                "runtime_cycle_error "
+                f"cycle={cycle_number} error_type={type(exc).__name__} error={exc}"
+            )
+            cycles_executed += 1
+
+            if max_cycles is not None and cycles_executed >= max_cycles:
+                break
+
+            sleep_seconds = float(runtime.refresh_error_backoff_seconds)
+            output_fn(
+                f"sleep_seconds={sleep_seconds:.3f} reason=runtime_cycle_error"
+            )
+            sleep_fn(sleep_seconds)
+            continue
 
         cycles_executed += 1
 
