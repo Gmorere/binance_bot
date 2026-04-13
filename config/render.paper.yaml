@@ -40,7 +40,7 @@ strategy:
       - "PULLBACK"
   backtest_policy:
     enabled: true
-    enforce_context_alignment: true
+    enforce_context_alignment: false
     allowed_sides:
       BTCUSDT:
         - "LONG"
@@ -50,7 +50,7 @@ strategy:
         - "SHORT"
 
 score_thresholds:
-  min_trade: 70
+  min_trade: 68
   aggressive: 85
   exceptional: 93
 

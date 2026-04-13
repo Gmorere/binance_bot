@@ -20,6 +20,13 @@
 
 ## Registro de cambios
 ### 2026-04-13
+- Cambio: en [render.paper.yaml](/D:/binance_futures_bot/config/render.paper.yaml) se desactiva `strategy.backtest_policy.enforce_context_alignment` y se ajusta `score_thresholds.min_trade` de `70` a `68` (paper only).
+- Motivo: los logs de paper mostraron bloqueo duplicado por contexto (`strategy_policy` por bias neutral/mixto + `dynamic_risk` que ya incorpora alineación/contexto en el score), además de descarte limítrofe con `score=68.00`.
+- Impacto esperado: destrabar flujo de entradas en paper sin tocar lógica de riesgo/sizing ni baseline de backtest.
+- Validacion realizada: ajuste acotado en configuración operativa cloud para remover doble gating y permitir iteración de frecuencia.
+- Riesgo residual: puede entrar más ruido de setups; hay que monitorear `opened`, `dynamic_risk`, y distribución de cierres (`STOP` vs `TP`).
+
+### 2026-04-13
 - Cambio: en [render.paper.yaml](/D:/binance_futures_bot/config/render.paper.yaml) se habilita `LONG` para `BTCUSDT` y `ETHUSDT` dentro de `strategy.backtest_policy.allowed_sides` (quedan `LONG+SHORT` en paper).
 - Motivo: el worker ya estaba detectando candidatos, pero los bloqueaba en `strategy_policy` con `Trade bloqueado por restriccion de lado: LONG no permitido`.
 - Impacto esperado: destrabar apertura de trades largos en paper y eliminar el cuello artificial de política de lado.
