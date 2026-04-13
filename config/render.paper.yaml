@@ -37,6 +37,7 @@ strategy:
       - "BREAKOUT"
     ETHUSDT:
       - "BREAKOUT"
+      - "PULLBACK"
   backtest_policy:
     enabled: true
     enforce_context_alignment: true

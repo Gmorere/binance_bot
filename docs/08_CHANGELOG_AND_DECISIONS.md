@@ -20,6 +20,13 @@
 
 ## Registro de cambios
 ### 2026-04-13
+- Cambio: habilitado `PULLBACK` solo para `ETHUSDT` en [render.paper.yaml](/D:/binance_futures_bot/config/render.paper.yaml) dentro de `strategy.allowed_setups_by_symbol`.
+- Motivo: con `BTC/ETH` ambos en `no_candidate`, la frecuencia real quedo por debajo del minimo util para validar mejoras economicas.
+- Impacto esperado: aumentar flujo de candidatos en paper sin alterar `BTCUSDT` ni los limites de riesgo/sizing ya vigentes.
+- Validacion realizada: ajuste de config cloud reversible y acotado al entorno paper.
+- Riesgo residual: mas frecuencia puede traer setups de menor calidad; se debe monitorear `decisions`, `opened`, cierres por `STOP` y neto por trade.
+
+### 2026-04-13
 - Cambio: tuning operativo de paper en [render.paper.yaml](/D:/binance_futures_bot/config/render.paper.yaml) para aumentar frecuencia de candidatos: `score_thresholds.min_trade` baja de `75` a `70` y `filters.max_trigger_candle_atr_multiple` sube de `1.6` a `1.8`.
 - Motivo: logs reales del worker mostraron `decisions={'no_candidate': 2}` de forma sostenida en BTC/ETH.
 - Impacto esperado: convertir parte del `no_candidate` en candidatos evaluables sin tocar todavia limites de capital, leverage ni riesgo agregado.
