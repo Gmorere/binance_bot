@@ -190,7 +190,7 @@ class MarketDataRuntimeTests(unittest.TestCase):
             now_ms=int(pd.Timestamp("2026-01-01T00:40:00Z").timestamp() * 1000)
         )
         third_result = service.poll(
-            now_ms=int(pd.Timestamp("2026-01-01T00:45:05Z").timestamp() * 1000)
+            now_ms=int(pd.Timestamp("2026-01-01T01:00:05Z").timestamp() * 1000)
         )
 
         self.assertIsInstance(first_result, MarketDataPollResult)
@@ -201,9 +201,9 @@ class MarketDataRuntimeTests(unittest.TestCase):
         self.assertEqual(first_result.refresh_results[0].new_rows, 1)
         self.assertEqual(second_result.refresh_results, [])
         self.assertEqual(third_result.refresh_results[0].new_rows, 0)
-        self.assertEqual(first_result.next_poll_after_ms, 1767228303000)
-        self.assertEqual(second_result.next_poll_after_ms, 1767228303000)
-        self.assertEqual(third_result.next_poll_after_ms, 1767228320000)
+        self.assertEqual(first_result.next_poll_after_ms, 1767229203000)
+        self.assertEqual(second_result.next_poll_after_ms, 1767229203000)
+        self.assertEqual(third_result.next_poll_after_ms, 1767229220000)
         self.assertTrue(any("data_refresh_skip" in line for line in outputs))
         self.assertTrue(any("data_refresh_schedule" in line for line in outputs))
 

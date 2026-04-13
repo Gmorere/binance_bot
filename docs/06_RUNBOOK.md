@@ -70,7 +70,7 @@ No conviene tratar `live` como si ya existiera. Hoy el camino operativo serio si
 - `paper_runtime` no conoce detalles de refresh REST ni de carga de CSV.
 - El contrato actual es un servicio con `poll()` que devuelve snapshot, resultados de refresh y `next_poll_after_ms`.
 - La implementacion concreta hoy es `PollingMarketDataService`.
-- Si `data.refresh_from_binance_rest=true`, el servicio agenda el siguiente refresh segun `ultimo_timestamp + timeframe + grace`.
+- Si `data.refresh_from_binance_rest=true`, el servicio agenda el siguiente refresh segun cierre real de vela (`ultimo_timestamp` de apertura + `2*timeframe + grace`).
 - Si el proximo cierre esperado todavia no llego, devuelve snapshot cacheado y loguea `data_refresh_skip`.
 
 ## Chequeo operativo minimo en Render

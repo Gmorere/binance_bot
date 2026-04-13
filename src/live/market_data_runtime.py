@@ -198,13 +198,18 @@ class PollingMarketDataService:
         min_spacing_ms = int(self.runtime.poll_interval_seconds) * 1000
 
         if snapshot.latest_timestamps:
+            # Los timestamps OHLCV de Binance representan apertura de vela.
+            # Si la ultima vela cerrada tiene apertura T, la siguiente vela
+            # "nueva cerrada" aparece recien en T + 2*intervalo.
             candidate_refreshes = [
-                _timestamp_to_ms(timestamp_str) + interval_ms + grace_ms
+                _timestamp_to_ms(timestamp_str) + (2 * interval_ms) + grace_ms
                 for timestamp_str in snapshot.latest_timestamps.values()
             ]
             candle_close_due_ms = min(candidate_refreshes)
         else:
-            candle_close_due_ms = _next_interval_boundary_ms(now_ms, interval_ms) + grace_ms
+            candle_close_due_ms = (
+                _next_interval_boundary_ms(now_ms, interval_ms) + interval_ms + grace_ms
+            )
 
         return max(candle_close_due_ms, now_ms + min_spacing_ms)
 
