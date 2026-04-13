@@ -439,6 +439,7 @@ class PaperEngineTests(unittest.TestCase):
         self.assertEqual(result.decision_counts.get("no_candidate"), 1)
         self.assertEqual(result.symbol_decisions.get("BTCUSDT"), "no_candidate")
         self.assertTrue(any("SKIP BTCUSDT no_candidate" in event for event in result.events))
+        self.assertTrue(any("no_candidate:" in event for event in result.events))
 
     def test_paper_cycle_preserves_symbol_base_risk_when_dynamic_score_is_lower(self) -> None:
         self.config["strategy"]["dynamic_risk_by_score"] = {"enabled": True, "preserve_symbol_base_risk": True}  # type: ignore[index]

@@ -31,6 +31,7 @@ from src.strategy.runtime_policy import (
     resolve_symbol_backtest_risk,
     resolve_symbol_filters,
 )
+from src.strategy.setup_detector import detect_breakout_setup, detect_pullback_setup
 from src.strategy.signal_service import detect_trade_candidate
 
 
@@ -682,6 +683,66 @@ def _get_unprocessed_candles(
     return pending.reset_index(drop=True)
 
 
+def _diagnose_no_candidate(
+    *,
+    config: Mapping[str, Any],
+    symbol: str,
+    market_df: pd.DataFrame,
+    trigger_index: int,
+) -> str:
+    history_df = market_df.iloc[: trigger_index + 1].copy().reset_index(drop=True)
+    symbol_filters = resolve_symbol_filters(dict(config), symbol)
+    symbol_allowed_setups = resolve_symbol_allowed_setups(dict(config), symbol)
+    pullback_settings = resolve_pullback_settings(dict(config), symbol)
+    reasons: list[str] = []
+
+    if "BREAKOUT" in symbol_allowed_setups:
+        breakout_setup = detect_breakout_setup(
+            df_15m=history_df,
+            min_candles=6,
+            max_candles=12,
+            max_range_atr_multiple=float(
+                symbol_filters.get("max_consolidation_range_atr_multiple", 1.2)
+            ),
+            min_volume_ratio=float(symbol_filters.get("min_breakout_volume_multiple", 1.0)),
+            max_trigger_candle_atr_multiple=float(
+                symbol_filters.get("max_trigger_candle_atr_multiple", 1.8)
+            ),
+        )
+        if not bool(breakout_setup.get("detected", False)):
+            notes = list(breakout_setup.get("notes", []))
+            reasons.append(f"BREAKOUT={str(notes[0]) if notes else 'sin_detalle'}")
+
+    if "PULLBACK" in symbol_allowed_setups:
+        pullback_setup = detect_pullback_setup(
+            df_15m=history_df,
+            impulse_lookback_candles=int(
+                pullback_settings.get("impulse_lookback_candles", 6)
+            ),
+            min_pullback_candles=int(pullback_settings.get("min_pullback_candles", 2)),
+            max_pullback_candles=int(pullback_settings.get("max_pullback_candles", 5)),
+            min_impulse_atr_multiple=float(
+                pullback_settings.get("min_impulse_atr_multiple", 1.8)
+            ),
+            min_retrace_ratio=float(pullback_settings.get("min_retrace_ratio", 0.25)),
+            max_retrace_ratio=float(pullback_settings.get("max_retrace_ratio", 0.60)),
+            min_volume_ratio=float(symbol_filters.get("min_breakout_volume_multiple", 1.0)),
+            max_trigger_candle_atr_multiple=float(
+                symbol_filters.get("max_trigger_candle_atr_multiple", 1.8)
+            ),
+            max_trigger_body_atr_multiple=(
+                float(pullback_settings["max_trigger_body_atr_multiple"])
+                if "max_trigger_body_atr_multiple" in pullback_settings
+                else None
+            ),
+        )
+        if not bool(pullback_setup.get("detected", False)):
+            notes = list(pullback_setup.get("notes", []))
+            reasons.append(f"PULLBACK={str(notes[0]) if notes else 'sin_detalle'}")
+
+    return " | ".join(reasons) if reasons else "sin_detalle"
+
+
 def run_paper_cycle(
     *,
     config: Mapping[str, Any],
@@ -832,7 +893,13 @@ def run_paper_cycle(
         candidates_by_symbol = {item.symbol: item for item in candidates}
         for symbol in sorted(eligible_market_data.keys()):
             if symbol not in candidates_by_symbol:
-                _append_event(state, events, f"SKIP {symbol} no_candidate")
+                reason = _diagnose_no_candidate(
+                    config=config,
+                    symbol=symbol,
+                    market_df=eligible_market_data[symbol],
+                    trigger_index=eligible_trigger_indices[symbol],
+                )
+                _append_event(state, events, f"SKIP {symbol} no_candidate: {reason}")
                 _record_symbol_decision(
                     symbol=symbol,
                     decision="no_candidate",
