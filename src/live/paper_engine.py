@@ -696,8 +696,8 @@ def _diagnose_no_candidate(
     pullback_settings = resolve_pullback_settings(dict(config), symbol)
     min_candles = int(symbol_filters.get("min_candles", 6))
     max_candles = int(symbol_filters.get("max_candles", 12))
-    if min_candles < 2:
-        min_candles = 2
+    if min_candles < 1:
+        min_candles = 1
     if max_candles < min_candles:
         max_candles = min_candles
     reasons: list[str] = []
@@ -866,8 +866,8 @@ def run_paper_cycle(
             pullback_settings = resolve_pullback_settings(dict(config), symbol_arg)
             min_candles = int(symbol_filters.get("min_candles", 6))
             max_candles = int(symbol_filters.get("max_candles", 12))
-            if min_candles < 2:
-                min_candles = 2
+            if min_candles < 1:
+                min_candles = 1
             if max_candles < min_candles:
                 max_candles = min_candles
             return detect_trade_candidate(

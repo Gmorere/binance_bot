@@ -20,6 +20,13 @@
 
 ## Registro de cambios
 ### 2026-04-13
+- Cambio: ajuste de detector en paper para permitir `min_candles=1` en breakout (antes el engine lo forzaba a mínimo `2`), junto con `min_candles=1` en [render.paper.yaml](/D:/binance_futures_bot/config/render.paper.yaml).
+- Motivo: con `no_candidate` persistente por `No se detectó consolidación válida`, la restricción de ventana mínima seguía bloqueando formación de setups en mercado de alta direccionalidad.
+- Impacto esperado: habilitar más candidatos y desplazar el cuello hacia filtros posteriores (`volumen`, `policy`, `dynamic_risk`, `sizing`) para iterar con señales reales.
+- Validacion realizada: cambio acotado a path paper + config cloud.
+- Riesgo residual: frecuencia mayor puede aumentar ruido de entrada; requiere monitorear `opened` vs calidad de resultados.
+
+### 2026-04-13
 - Cambio: segundo ajuste de desbloqueo estructural en paper para breakout: `max_consolidation_range_atr_multiple` elevado a `2.0` global, `BTC=2.2`, `ETH=2.6` en [render.paper.yaml](/D:/binance_futures_bot/config/render.paper.yaml).
 - Motivo: tras habilitar ventana de velas configurable, el diagnóstico seguía en `BREAKOUT=No se detectó consolidación válida` con parámetros previos.
 - Impacto esperado: aumentar significativamente la probabilidad de detectar consolidaciones en contexto real de mercado y habilitar evaluación de filtros posteriores.
