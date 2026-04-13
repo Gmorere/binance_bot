@@ -43,8 +43,10 @@ strategy:
     enforce_context_alignment: true
     allowed_sides:
       BTCUSDT:
+        - "LONG"
         - "SHORT"
       ETHUSDT:
+        - "LONG"
         - "SHORT"
 
 score_thresholds:

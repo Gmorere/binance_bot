@@ -20,6 +20,13 @@
 
 ## Registro de cambios
 ### 2026-04-13
+- Cambio: en [render.paper.yaml](/D:/binance_futures_bot/config/render.paper.yaml) se habilita `LONG` para `BTCUSDT` y `ETHUSDT` dentro de `strategy.backtest_policy.allowed_sides` (quedan `LONG+SHORT` en paper).
+- Motivo: el worker ya estaba detectando candidatos, pero los bloqueaba en `strategy_policy` con `Trade bloqueado por restriccion de lado: LONG no permitido`.
+- Impacto esperado: destrabar apertura de trades largos en paper y eliminar el cuello artificial de política de lado.
+- Validacion realizada: ajuste de configuración paper (cloud) para alinear policy con la estrategia que se está evaluando.
+- Riesgo residual: al abrir ambos lados puede subir la frecuencia con más ruido; hay que monitorear `opened`, `exit_reason` y neto por setup.
+
+### 2026-04-13
 - Cambio: ajuste de umbral de volumen en paper tras diagnóstico de `no_candidate`: `min_breakout_volume_multiple` baja a `0.7` (BTC `0.8`, ETH `0.6`) y `pullback` se flexibiliza adicionalmente (`max_pullback_candles=8`, `min_impulse_atr_multiple` global `1.0`, ETH `0.9`) en [render.paper.yaml](/D:/binance_futures_bot/config/render.paper.yaml).
 - Motivo: el bloqueo principal pasó a `BREAKOUT=Volumen insuficiente para validar breakout` y ETH seguía con `PULLBACK` sin estructura válida.
 - Impacto esperado: elevar el flujo de candidatos en paper para destrabar la etapa de señal y observar los siguientes filtros reales.
