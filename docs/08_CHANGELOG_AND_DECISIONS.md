@@ -20,6 +20,13 @@
 
 ## Registro de cambios
 ### 2026-04-13
+- Cambio: ajuste de umbral de volumen en paper tras diagnóstico de `no_candidate`: `min_breakout_volume_multiple` baja a `0.7` (BTC `0.8`, ETH `0.6`) y `pullback` se flexibiliza adicionalmente (`max_pullback_candles=8`, `min_impulse_atr_multiple` global `1.0`, ETH `0.9`) en [render.paper.yaml](/D:/binance_futures_bot/config/render.paper.yaml).
+- Motivo: el bloqueo principal pasó a `BREAKOUT=Volumen insuficiente para validar breakout` y ETH seguía con `PULLBACK` sin estructura válida.
+- Impacto esperado: elevar el flujo de candidatos en paper para destrabar la etapa de señal y observar los siguientes filtros reales.
+- Validacion realizada: ajuste acotado de configuración operativa cloud (paper only).
+- Riesgo residual: umbrales más laxos pueden degradar calidad; se debe monitorear `opened` y motivos de cierre (`STOP` vs `TP`).
+
+### 2026-04-13
 - Cambio: ajuste de detector en paper para permitir `min_candles=1` en breakout (antes el engine lo forzaba a mínimo `2`), junto con `min_candles=1` en [render.paper.yaml](/D:/binance_futures_bot/config/render.paper.yaml).
 - Motivo: con `no_candidate` persistente por `No se detectó consolidación válida`, la restricción de ventana mínima seguía bloqueando formación de setups en mercado de alta direccionalidad.
 - Impacto esperado: habilitar más candidatos y desplazar el cuello hacia filtros posteriores (`volumen`, `policy`, `dynamic_risk`, `sizing`) para iterar con señales reales.
