@@ -33,6 +33,7 @@ TimeFn = Callable[[], float]
 class PaperRuntimeSummary:
     cycles_executed: int
     cycles_with_new_candles: int
+    cycle_errors: int
     last_state_path: Path
 
 
@@ -63,6 +64,7 @@ def run_paper_runtime_loop(
 
     cycles_executed = 0
     cycles_with_new_candles = 0
+    cycle_errors = 0
 
     while True:
         cycle_number = cycles_executed + 1
@@ -105,11 +107,18 @@ def run_paper_runtime_loop(
                     f"Error en ciclo paper {cycle_number}: {exc}"
                 ) from exc
 
+            cycle_errors += 1
             output_fn(
                 "runtime_cycle_error "
                 f"cycle={cycle_number} error_type={type(exc).__name__} error={exc}"
             )
             cycles_executed += 1
+            output_fn(
+                "runtime_status "
+                f"cycles={cycles_executed} cycles_with_new_candles={cycles_with_new_candles} "
+                f"cycle_errors={cycle_errors} open_positions={len(state.open_positions)} "
+                f"open_risk_pct={state.open_risk_pct:.4f} equity={state.equity:.4f}"
+            )
 
             if max_cycles is not None and cycles_executed >= max_cycles:
                 break
@@ -128,6 +137,13 @@ def run_paper_runtime_loop(
         if max_cycles is not None and cycles_executed >= max_cycles:
             break
 
+        output_fn(
+            "runtime_status "
+            f"cycles={cycles_executed} cycles_with_new_candles={cycles_with_new_candles} "
+            f"cycle_errors={cycle_errors} open_positions={len(state.open_positions)} "
+            f"open_risk_pct={state.open_risk_pct:.4f} equity={state.equity:.4f}"
+        )
+
         sleep_seconds = _resolve_sleep_seconds(
             poll_result.next_poll_after_ms,
             now_ms=int(time_fn() * 1000),
@@ -139,6 +155,7 @@ def run_paper_runtime_loop(
     return PaperRuntimeSummary(
         cycles_executed=cycles_executed,
         cycles_with_new_candles=cycles_with_new_candles,
+        cycle_errors=cycle_errors,
         last_state_path=state_path,
     )
 

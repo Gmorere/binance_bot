@@ -20,6 +20,13 @@
 
 ## Registro de cambios
 ### 2026-04-13
+- Cambio: se agrega `runtime_status` por ciclo en [paper_runtime.py](/D:/binance_futures_bot/src/live/paper_runtime.py) con métricas agregadas (`cycles`, `cycles_with_new_candles`, `cycle_errors`, `open_positions`, `open_risk_pct`, `equity`) y se incorpora `cycle_errors` al resumen del runtime.
+- Motivo: faltaba visibilidad operativa consolidada para validar salud del worker en Render sin reconstruir estado leyendo eventos sueltos.
+- Impacto esperado: diagnóstico más rápido del backend y detección temprana de degradación (errores, estancamiento o falta de despliegue de capital).
+- Validacion realizada: actualización de [test_paper_runtime.py](/D:/binance_futures_bot/tests/test_paper_runtime.py) para cobertura de `runtime_status` y `cycle_errors`.
+- Riesgo residual: mejora observabilidad local por logs, pero todavía no hay alertas automáticas externas.
+
+### 2026-04-13
 - Cambio: hardening del loop en [paper_runtime.py](/D:/binance_futures_bot/src/live/paper_runtime.py): ahora captura excepciones de ciclo (`poll`, `paper_cycle`, persistencia de estado), loguea `runtime_cycle_error`, aplica backoff (`data.refresh_error_backoff_seconds`) y continúa en modo continuo.
 - Motivo: un error no controlado dentro del ciclo podía tumbar el worker completo aun con deploy sano, afectando continuidad operativa cloud.
 - Impacto esperado: mayor disponibilidad del backend paper en Render; el proceso deja de entrar en crash por errores transitorios del ciclo.

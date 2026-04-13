@@ -189,9 +189,11 @@ class PaperRuntimeTests(unittest.TestCase):
         self.assertEqual(service.poll_calls, 2)
         self.assertEqual(summary.cycles_executed, 2)
         self.assertEqual(summary.cycles_with_new_candles, 1)
+        self.assertEqual(summary.cycle_errors, 0)
         self.assertTrue(summary.last_state_path.exists())
         self.assertEqual(sleep_calls, [1.5])
         self.assertTrue(any("decisions=" in line for line in outputs))
+        self.assertTrue(any("runtime_status cycles=1" in line for line in outputs))
         self.assertTrue(any("sleep_seconds=1.500" in line for line in outputs))
         self.assertTrue(any("no_new_candles" in line for line in outputs))
 
@@ -226,8 +228,10 @@ class PaperRuntimeTests(unittest.TestCase):
 
         self.assertEqual(summary.cycles_executed, 2)
         self.assertEqual(summary.cycles_with_new_candles, 0)
+        self.assertEqual(summary.cycle_errors, 1)
         self.assertEqual(sleep_calls, [120.0])
         self.assertTrue(any("runtime_cycle_error cycle=1" in line for line in outputs))
+        self.assertTrue(any("runtime_status cycles=1" in line for line in outputs))
         self.assertTrue(
             any(
                 "sleep_seconds=120.000 reason=runtime_cycle_error" in line
