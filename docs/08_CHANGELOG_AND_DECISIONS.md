@@ -20,6 +20,13 @@
 
 ## Registro de cambios
 ### 2026-04-13
+- Cambio: [market_data_runtime.py](/D:/binance_futures_bot/src/live/market_data_runtime.py) ahora carga snapshot de forma tolerante por símbolo/timeframe: si falta `1h/4h` de un símbolo, mantiene `entry` y rellena esos contextos con dataframes vacíos en vez de bloquear todo el snapshot.
+- Motivo: en bootstrap parcial (por `418` intermitente), podía existir `15m` pero faltar `1h/4h`; eso dejaba al runtime pegado en fallback sin avanzar aunque ya había mercado de entrada disponible.
+- Impacto esperado: recuperación más rápida tras degradación de feed y menor dependencia de tener todos los CSV sincronizados en el mismo instante.
+- Validacion realizada: test nuevo en [test_market_data_runtime.py](/D:/binance_futures_bot/tests/test_market_data_runtime.py) para `snapshot_keeps_entry_when_bias_or_context_csv_is_missing`.
+- Riesgo residual: con `1h/4h` vacíos, el sistema puede degradar decisiones de contexto/score temporalmente hasta completar esos archivos.
+
+### 2026-04-13
 - Cambio: cuando no hay CSV local inicial y falla el refresh REST, [market_data_runtime.py](/D:/binance_futures_bot/src/live/market_data_runtime.py) ahora usa `empty snapshot` en vez de lanzar excepción, evitando `runtime_cycle_error` al bootstrap.
 - Motivo: en Render, si Binance devuelve `418` justo en el primer ciclo, no existe `*_15m.csv` y el loop quedaba degradado por error de archivo faltante.
 - Impacto esperado: arranque más robusto con espera controlada hasta obtener el primer refresh válido.

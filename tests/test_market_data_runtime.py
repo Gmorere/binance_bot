@@ -348,6 +348,24 @@ class MarketDataRuntimeTests(unittest.TestCase):
         self.assertFalse(snapshot.bias_market_data_by_symbol["BTCUSDT"].empty)
         self.assertFalse(snapshot.context_market_data_by_symbol["BTCUSDT"].empty)
 
+    def test_snapshot_keeps_entry_when_bias_or_context_csv_is_missing(self) -> None:
+        self.config["timeframes"] = {"entry": "15m", "bias": "1h", "context": "4h"}  # type: ignore[index]
+        outputs: list[str] = []
+
+        # Solo dejamos entry; faltan 1h/4h para verificar tolerancia de snapshot.
+        snapshot = build_market_data_service(
+            self.config,
+            output_fn=outputs.append,
+        ).load_entry_market_snapshot()
+
+        self.assertIn("BTCUSDT", snapshot.market_data_by_symbol)
+        self.assertFalse(snapshot.market_data_by_symbol["BTCUSDT"].empty)
+        self.assertIn("BTCUSDT", snapshot.bias_market_data_by_symbol)
+        self.assertIn("BTCUSDT", snapshot.context_market_data_by_symbol)
+        self.assertTrue(snapshot.bias_market_data_by_symbol["BTCUSDT"].empty)
+        self.assertTrue(snapshot.context_market_data_by_symbol["BTCUSDT"].empty)
+        self.assertTrue(any("data_snapshot_timeframe_missing" in line for line in outputs))
+
 
 if __name__ == "__main__":
     unittest.main()

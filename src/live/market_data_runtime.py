@@ -12,7 +12,7 @@ from src.data.binance_kline_updater import (
     RefreshResult,
     refresh_symbol_timeframe_csv,
 )
-from src.data.data_loader import load_all_symbols
+from src.data.data_loader import DataLoaderError, load_symbol_timeframe_data
 from src.exchange.binance_usdm_client import BinanceUsdmClient
 from src.features.indicators import add_basic_indicators
 from src.live.runtime_config import load_runtime_config
@@ -250,26 +250,63 @@ class PollingMarketDataService:
         symbols = list(symbols_cfg["enabled"])
         load_timeframes = _resolve_runtime_timeframes(timeframes_cfg)
 
-        bundles = load_all_symbols(
-            raw_data_path=raw_data_path,
-            symbols=symbols,
-            timeframes=tuple(load_timeframes),
-        )
+        market_data_by_symbol: dict[str, pd.DataFrame] = {}
+        bias_market_data_by_symbol: dict[str, pd.DataFrame] = {}
+        context_market_data_by_symbol: dict[str, pd.DataFrame] = {}
+        empty_columns = ["timestamp", "open", "high", "low", "close", "volume"]
 
-        market_data_by_symbol = {
-            symbol: add_basic_indicators(bundle[entry_timeframe]).reset_index(drop=True)
-            for symbol, bundle in bundles.items()
-        }
-        bias_market_data_by_symbol = {
-            symbol: add_basic_indicators(bundle[bias_timeframe]).reset_index(drop=True)
-            for symbol, bundle in bundles.items()
-            if bias_timeframe is not None
-        }
-        context_market_data_by_symbol = {
-            symbol: add_basic_indicators(bundle[context_timeframe]).reset_index(drop=True)
-            for symbol, bundle in bundles.items()
-            if context_timeframe is not None
-        }
+        for symbol in symbols:
+            try:
+                entry_df = load_symbol_timeframe_data(
+                    raw_data_path=raw_data_path,
+                    symbol=symbol,
+                    timeframe=entry_timeframe,
+                )
+            except (FileNotFoundError, DataLoaderError) as exc:
+                self.output_fn(
+                    "data_snapshot_symbol_skip "
+                    f"symbol={symbol} timeframe={entry_timeframe} "
+                    f"error={type(exc).__name__}: {exc}"
+                )
+                continue
+
+            market_data_by_symbol[symbol] = add_basic_indicators(entry_df).reset_index(drop=True)
+
+            if bias_timeframe is not None:
+                try:
+                    bias_df = load_symbol_timeframe_data(
+                        raw_data_path=raw_data_path,
+                        symbol=symbol,
+                        timeframe=bias_timeframe,
+                    )
+                    bias_market_data_by_symbol[symbol] = add_basic_indicators(bias_df).reset_index(drop=True)
+                except (FileNotFoundError, DataLoaderError) as exc:
+                    self.output_fn(
+                        "data_snapshot_timeframe_missing "
+                        f"symbol={symbol} timeframe={bias_timeframe} "
+                        f"error={type(exc).__name__}: {exc}"
+                    )
+                    bias_market_data_by_symbol[symbol] = pd.DataFrame(columns=empty_columns)
+
+            if context_timeframe is not None:
+                try:
+                    context_df = load_symbol_timeframe_data(
+                        raw_data_path=raw_data_path,
+                        symbol=symbol,
+                        timeframe=context_timeframe,
+                    )
+                    context_market_data_by_symbol[symbol] = add_basic_indicators(context_df).reset_index(drop=True)
+                except (FileNotFoundError, DataLoaderError) as exc:
+                    self.output_fn(
+                        "data_snapshot_timeframe_missing "
+                        f"symbol={symbol} timeframe={context_timeframe} "
+                        f"error={type(exc).__name__}: {exc}"
+                    )
+                    context_market_data_by_symbol[symbol] = pd.DataFrame(columns=empty_columns)
+
+        if not market_data_by_symbol:
+            raise MarketDataRuntimeError("No hay entry market data disponible para ningun simbolo.")
+
         latest_timestamps = {
             symbol: str(pd.to_datetime(df.iloc[-1]["timestamp"], utc=True))
             for symbol, df in market_data_by_symbol.items()
