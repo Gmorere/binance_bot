@@ -172,6 +172,30 @@ class MarketDataRuntimeTests(unittest.TestCase):
         self.assertEqual(poll_result.next_poll_after_ms, now_ms + 120000)
         self.assertTrue(any("data_refresh_error_backoff" in line for line in outputs))
 
+    def test_polling_service_uses_empty_snapshot_when_no_local_csv_and_refresh_fails(self) -> None:
+        self.config["data"]["refresh_from_binance_rest"] = True  # type: ignore[index]
+        outputs: list[str] = []
+        csv_path = self.raw_data_path / "BTCUSDT_15m.csv"
+        csv_path.unlink(missing_ok=True)
+
+        def failing_refresh(**_kwargs: object) -> RefreshResult:
+            raise BinanceKlineUpdaterError("418 teapot")
+
+        service = build_market_data_service(
+            self.config,
+            output_fn=outputs.append,
+            refresh_symbol_timeframe_csv_fn=failing_refresh,
+        )
+
+        now_ms = int(pd.Timestamp("2026-01-01T01:30:00Z").timestamp() * 1000)
+        poll_result = service.poll(now_ms=now_ms)
+
+        self.assertIn("BTCUSDT", poll_result.snapshot.market_data_by_symbol)
+        self.assertTrue(poll_result.snapshot.market_data_by_symbol["BTCUSDT"].empty)
+        self.assertEqual(poll_result.snapshot.latest_timestamps, {})
+        self.assertEqual(poll_result.next_poll_after_ms, now_ms + 120000)
+        self.assertTrue(any("using_empty_snapshot=true" in line for line in outputs))
+
     def test_polling_service_throttles_repeated_refresh_attempts_within_same_candle_bucket(self) -> None:
         self.config["data"]["refresh_from_binance_rest"] = True  # type: ignore[index]
         outputs: list[str] = []

@@ -78,12 +78,17 @@ class PollingMarketDataService:
             snapshot = self.load_entry_market_snapshot()
         except Exception as exc:
             if self._cached_snapshot is None:
-                raise
-            snapshot = self._cached_snapshot
-            self.output_fn(
-                "data_snapshot_fallback "
-                f"error={type(exc).__name__}: {exc} using_cached_snapshot=true"
-            )
+                snapshot = self._build_empty_snapshot()
+                self.output_fn(
+                    "data_snapshot_fallback "
+                    f"error={type(exc).__name__}: {exc} using_empty_snapshot=true"
+                )
+            else:
+                snapshot = self._cached_snapshot
+                self.output_fn(
+                    "data_snapshot_fallback "
+                    f"error={type(exc).__name__}: {exc} using_cached_snapshot=true"
+                )
         next_poll_after_ms = resolved_now_ms + int(self.runtime.poll_interval_seconds) * 1000
 
         if self.runtime.refresh_from_binance_rest:
@@ -94,10 +99,13 @@ class PollingMarketDataService:
             )
             if self._last_refresh_error_count > 0:
                 error_cooldown_ms = int(self.runtime.refresh_error_backoff_seconds) * 1000
-                self._next_refresh_after_ms = max(
-                    int(self._next_refresh_after_ms),
-                    resolved_now_ms + error_cooldown_ms,
-                )
+                if snapshot.latest_timestamps:
+                    self._next_refresh_after_ms = max(
+                        int(self._next_refresh_after_ms),
+                        resolved_now_ms + error_cooldown_ms,
+                    )
+                else:
+                    self._next_refresh_after_ms = resolved_now_ms + error_cooldown_ms
                 self.output_fn(
                     "data_refresh_error_backoff "
                     f"errors={self._last_refresh_error_count} "
@@ -188,6 +196,44 @@ class PollingMarketDataService:
 
         self._last_refresh_attempt_bucket_by_symbol_timeframe[cache_key] = refresh_bucket
         return True
+
+    def _build_empty_snapshot(self) -> MarketDataSnapshot:
+        timeframes_cfg = self.config["timeframes"]  # type: ignore[index]
+        symbols_cfg = self.config["symbols"]  # type: ignore[index]
+        entry_timeframe = str(timeframes_cfg["entry"])
+        bias_timeframe = str(timeframes_cfg["bias"]) if "bias" in timeframes_cfg else None
+        context_timeframe = str(timeframes_cfg["context"]) if "context" in timeframes_cfg else None
+        symbols = list(symbols_cfg["enabled"])
+
+        empty_columns = ["timestamp", "open", "high", "low", "close", "volume"]
+        market_data_by_symbol = {
+            symbol: pd.DataFrame(columns=empty_columns)
+            for symbol in symbols
+        }
+        bias_market_data_by_symbol = (
+            {
+                symbol: pd.DataFrame(columns=empty_columns)
+                for symbol in symbols
+            }
+            if bias_timeframe is not None
+            else {}
+        )
+        context_market_data_by_symbol = (
+            {
+                symbol: pd.DataFrame(columns=empty_columns)
+                for symbol in symbols
+            }
+            if context_timeframe is not None
+            else {}
+        )
+
+        return MarketDataSnapshot(
+            entry_timeframe=entry_timeframe,
+            market_data_by_symbol=market_data_by_symbol,
+            latest_timestamps={},
+            bias_market_data_by_symbol=bias_market_data_by_symbol,
+            context_market_data_by_symbol=context_market_data_by_symbol,
+        )
 
     def load_entry_market_snapshot(self) -> MarketDataSnapshot:
         try:

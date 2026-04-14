@@ -20,6 +20,13 @@
 
 ## Registro de cambios
 ### 2026-04-13
+- Cambio: cuando no hay CSV local inicial y falla el refresh REST, [market_data_runtime.py](/D:/binance_futures_bot/src/live/market_data_runtime.py) ahora usa `empty snapshot` en vez de lanzar excepción, evitando `runtime_cycle_error` al bootstrap.
+- Motivo: en Render, si Binance devuelve `418` justo en el primer ciclo, no existe `*_15m.csv` y el loop quedaba degradado por error de archivo faltante.
+- Impacto esperado: arranque más robusto con espera controlada hasta obtener el primer refresh válido.
+- Validacion realizada: test nuevo en [test_market_data_runtime.py](/D:/binance_futures_bot/tests/test_market_data_runtime.py) para `using_empty_snapshot=true` y `next_poll_after_ms=now+backoff`.
+- Riesgo residual: si el bloqueo 418 persiste por red/región, el worker seguirá vivo pero sin datos nuevos hasta recuperar conectividad.
+
+### 2026-04-13
 - Cambio: throttling de refresh REST por símbolo/timeframe en [market_data_runtime.py](/D:/binance_futures_bot/src/live/market_data_runtime.py): el runtime ahora intenta como máximo una consulta por bucket de vela para cada par símbolo+timeframe.
 - Motivo: en ráfagas de `418` se repetía la misma consulta cada backoff (`120s`), generando tormenta de errores y periodos largos de `no_new_candles`.
 - Impacto esperado: menor presión sobre Binance, menos loops degradados por repetición de request y recuperación más limpia cuando vuelve el feed.
