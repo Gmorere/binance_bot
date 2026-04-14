@@ -57,6 +57,7 @@ class PollingMarketDataService:
         self._cached_snapshot: MarketDataSnapshot | None = None
         self._next_refresh_after_ms: int | None = None
         self._last_refresh_error_count: int = 0
+        self._last_refresh_attempt_bucket_by_symbol_timeframe: dict[tuple[str, str], int] = {}
 
     def poll(self, *, now_ms: int | None = None) -> MarketDataPollResult:
         resolved_now_ms = _resolve_now_ms(now_ms)
@@ -135,6 +136,13 @@ class PollingMarketDataService:
         refresh_errors = 0
         for symbol in symbols:
             for timeframe in timeframes_to_refresh:
+                if not self._should_attempt_refresh(
+                    symbol=symbol,
+                    timeframe=timeframe,
+                    now_ms=resolved_now_ms,
+                ):
+                    continue
+
                 try:
                     result = self.refresh_symbol_timeframe_csv_fn(
                         raw_data_path=raw_data_path,
@@ -165,6 +173,21 @@ class PollingMarketDataService:
 
         self._last_refresh_error_count = refresh_errors
         return results
+
+    def _should_attempt_refresh(
+        self,
+        *,
+        symbol: str,
+        timeframe: str,
+        now_ms: int,
+    ) -> bool:
+        refresh_bucket = now_ms // _resolve_interval_ms(timeframe)
+        cache_key = (str(symbol).strip().upper(), str(timeframe).strip())
+        if self._last_refresh_attempt_bucket_by_symbol_timeframe.get(cache_key) == refresh_bucket:
+            return False
+
+        self._last_refresh_attempt_bucket_by_symbol_timeframe[cache_key] = refresh_bucket
+        return True
 
     def load_entry_market_snapshot(self) -> MarketDataSnapshot:
         try:

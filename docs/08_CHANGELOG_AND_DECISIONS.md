@@ -20,6 +20,13 @@
 
 ## Registro de cambios
 ### 2026-04-13
+- Cambio: throttling de refresh REST por símbolo/timeframe en [market_data_runtime.py](/D:/binance_futures_bot/src/live/market_data_runtime.py): el runtime ahora intenta como máximo una consulta por bucket de vela para cada par símbolo+timeframe.
+- Motivo: en ráfagas de `418` se repetía la misma consulta cada backoff (`120s`), generando tormenta de errores y periodos largos de `no_new_candles`.
+- Impacto esperado: menor presión sobre Binance, menos loops degradados por repetición de request y recuperación más limpia cuando vuelve el feed.
+- Validacion realizada: test nuevo en [test_market_data_runtime.py](/D:/binance_futures_bot/tests/test_market_data_runtime.py) para verificar throttling dentro del mismo bucket.
+- Riesgo residual: si un bucket falla completo, el refresh se reintenta recién en el siguiente bucket de ese timeframe (trade-off deliberado para priorizar estabilidad).
+
+### 2026-04-13
 - Cambio: se agrega `runtime_status` por ciclo en [paper_runtime.py](/D:/binance_futures_bot/src/live/paper_runtime.py) con métricas agregadas (`cycles`, `cycles_with_new_candles`, `cycle_errors`, `open_positions`, `open_risk_pct`, `equity`) y se incorpora `cycle_errors` al resumen del runtime.
 - Motivo: faltaba visibilidad operativa consolidada para validar salud del worker en Render sin reconstruir estado leyendo eventos sueltos.
 - Impacto esperado: diagnóstico más rápido del backend y detección temprana de degradación (errores, estancamiento o falta de despliegue de capital).

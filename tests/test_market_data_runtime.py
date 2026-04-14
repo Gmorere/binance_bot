@@ -172,6 +172,29 @@ class MarketDataRuntimeTests(unittest.TestCase):
         self.assertEqual(poll_result.next_poll_after_ms, now_ms + 120000)
         self.assertTrue(any("data_refresh_error_backoff" in line for line in outputs))
 
+    def test_polling_service_throttles_repeated_refresh_attempts_within_same_candle_bucket(self) -> None:
+        self.config["data"]["refresh_from_binance_rest"] = True  # type: ignore[index]
+        outputs: list[str] = []
+        attempts: list[dict[str, object]] = []
+
+        def failing_refresh(**kwargs: object) -> RefreshResult:
+            attempts.append(kwargs)
+            raise BinanceKlineUpdaterError("418 teapot")
+
+        service = build_market_data_service(
+            self.config,
+            output_fn=outputs.append,
+            refresh_symbol_timeframe_csv_fn=failing_refresh,
+        )
+
+        base_now_ms = int(pd.Timestamp("2026-01-01T01:30:00Z").timestamp() * 1000)
+        service.poll(now_ms=base_now_ms)
+        service.poll(now_ms=base_now_ms + 121000)  # sigue dentro de la misma vela 15m
+        service.poll(now_ms=base_now_ms + (16 * 60 * 1000))  # siguiente bucket 15m
+
+        self.assertEqual(len(attempts), 2)
+        self.assertTrue(any("data_refresh_error_backoff" in line for line in outputs))
+
     def test_polling_service_respects_next_candle_close_before_refreshing_again(self) -> None:
         self.config["data"]["refresh_from_binance_rest"] = True  # type: ignore[index]
         refresh_calls: list[dict[str, object]] = []
