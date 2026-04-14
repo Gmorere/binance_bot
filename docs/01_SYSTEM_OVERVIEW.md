@@ -36,9 +36,10 @@ Bot de trading orientado a:
 - Ya puede reutilizar la politica research de lado y contexto al abrir trades
 
 ### 3. Live
-- No esta implementado de punta a punta
+- Existe `live v0.1` en modo seguro (reconciliacion minima + heartbeat)
+- La ejecucion real de ordenes sigue bloqueada por defecto (`LIVE_ENABLED=false`)
 - Hay cliente exchange en [binance_usdm_client.py](/D:/binance_futures_bot/src/exchange/binance_usdm_client.py)
-- Falta lifecycle real de ordenes, reconciliacion y account sync
+- Falta lifecycle real de ordenes, reconciliacion completa y account sync en tiempo real
 
 ## Flujo operativo implementado hoy
 1. Market data en `data/raw` o refresh REST incremental.

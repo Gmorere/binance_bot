@@ -20,6 +20,13 @@
 
 ## Registro de cambios
 ### 2026-04-13
+- Cambio: se incorpora `live v0.1` seguro con [run_live.py](/D:/binance_futures_bot/run_live.py) y [live_runtime.py](/D:/binance_futures_bot/src/live/live_runtime.py), incluyendo guard-rail por entorno `LIVE_ENABLED` (default bloqueado), reconciliación mínima de cuenta y heartbeat operativo.
+- Motivo: faltaba una etapa formal entre paper y live real para validar conectividad, credenciales y estado de cuenta sin riesgo de envío accidental de órdenes.
+- Impacto esperado: habilitar operación cloud de monitoreo/reconciliación live con riesgo de ejecución nulo por defecto.
+- Validacion realizada: tests nuevos en [test_live_runtime.py](/D:/binance_futures_bot/tests/test_live_runtime.py), extensión de [test_binance_client.py](/D:/binance_futures_bot/tests/test_binance_client.py) para endpoints de reconciliación/cancelación, y config dedicada [live.safe.yaml](/D:/binance_futures_bot/config/live.safe.yaml).
+- Riesgo residual: `live v0.1` aún no implementa routing de órdenes ni user stream; sigue siendo una capa de seguridad/observabilidad previa a live trading real.
+
+### 2026-04-13
 - Cambio: [market_data_runtime.py](/D:/binance_futures_bot/src/live/market_data_runtime.py) ahora carga snapshot de forma tolerante por símbolo/timeframe: si falta `1h/4h` de un símbolo, mantiene `entry` y rellena esos contextos con dataframes vacíos en vez de bloquear todo el snapshot.
 - Motivo: en bootstrap parcial (por `418` intermitente), podía existir `15m` pero faltar `1h/4h`; eso dejaba al runtime pegado en fallback sin avanzar aunque ya había mercado de entrada disponible.
 - Impacto esperado: recuperación más rápida tras degradación de feed y menor dependencia de tener todos los CSV sincronizados en el mismo instante.

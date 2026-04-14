@@ -3,7 +3,11 @@
 import unittest
 from unittest.mock import Mock
 
-from src.exchange.binance_usdm_client import BinanceCredentials, BinanceUsdmClient
+from src.exchange.binance_usdm_client import (
+    BinanceCredentials,
+    BinanceUsdmClient,
+    BinanceUsdmClientError,
+)
 from src.live.runtime_config import load_runtime_config
 
 
@@ -58,6 +62,58 @@ class BinanceUsdmClientTests(unittest.TestCase):
         self.assertIn("recvWindow", params)
         self.assertIn("signature", params)
         self.assertEqual(kwargs["headers"]["X-MBX-APIKEY"], "key")
+
+    def test_get_open_orders_calls_signed_endpoint(self) -> None:
+        session = Mock()
+        response = Mock()
+        response.json.return_value = []
+        response.raise_for_status.return_value = None
+        session.request.return_value = response
+
+        client = BinanceUsdmClient(
+            credentials=BinanceCredentials(api_key="key", api_secret="secret"),
+            use_testnet=True,
+            session=session,
+        )
+
+        client.get_open_orders(symbol="BTCUSDT")
+
+        kwargs = session.request.call_args.kwargs
+        self.assertEqual(kwargs["method"], "GET")
+        self.assertTrue(kwargs["url"].endswith("/fapi/v1/openOrders"))
+        self.assertEqual(kwargs["params"]["symbol"], "BTCUSDT")
+        self.assertIn("signature", kwargs["params"])
+
+    def test_cancel_order_requires_identifier(self) -> None:
+        client = BinanceUsdmClient(
+            credentials=BinanceCredentials(api_key="key", api_secret="secret"),
+            use_testnet=True,
+        )
+
+        with self.assertRaises(BinanceUsdmClientError):
+            client.cancel_order(symbol="BTCUSDT")
+
+    def test_cancel_order_uses_delete_endpoint(self) -> None:
+        session = Mock()
+        response = Mock()
+        response.json.return_value = {"status": "CANCELED"}
+        response.raise_for_status.return_value = None
+        session.request.return_value = response
+
+        client = BinanceUsdmClient(
+            credentials=BinanceCredentials(api_key="key", api_secret="secret"),
+            use_testnet=True,
+            session=session,
+        )
+
+        client.cancel_order(symbol="BTCUSDT", order_id=12345)
+
+        kwargs = session.request.call_args.kwargs
+        self.assertEqual(kwargs["method"], "DELETE")
+        self.assertTrue(kwargs["url"].endswith("/fapi/v1/order"))
+        self.assertEqual(kwargs["params"]["symbol"], "BTCUSDT")
+        self.assertEqual(kwargs["params"]["orderId"], 12345)
+        self.assertIn("signature", kwargs["params"])
 
 
 class RuntimeConfigTests(unittest.TestCase):

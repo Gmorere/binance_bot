@@ -63,6 +63,22 @@ docker run --rm \
   binance-futures-bot
 ```
 
+## Live seguro v0.1
+`live` ya tiene runtime seguro para reconciliacion minima de cuenta, con ejecucion real bloqueada por defecto.
+
+```bash
+# modo seguro (no envia ordenes)
+python run_live.py --once
+
+# con config dedicada
+set BOT_CONFIG_PATH=config/live.safe.yaml
+python run_live.py
+```
+
+Variables relevantes:
+- `LIVE_ENABLED` -> si no se define o es `false`, bloquea ejecucion de ordenes.
+- `BINANCE_API_KEY` / `BINANCE_API_SECRET` -> requeridas para reconciliacion live.
+
 ## Render
 El repo ya puede ser consumido por Render via [render.yaml](/D:/binance_futures_bot/render.yaml). Lo pendiente no es el remoto, sino aplicar y validar el worker en un entorno real.
 

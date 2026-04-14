@@ -146,6 +146,55 @@ class BinanceUsdmClient:
     def get_account_info(self) -> Any:
         return self._request(method="GET", path="/fapi/v2/account", signed=True)
 
+    def get_position_risk(self, *, symbol: str | None = None) -> Any:
+        params: dict[str, Any] = {}
+        if symbol:
+            params["symbol"] = symbol
+        return self._request(
+            method="GET",
+            path="/fapi/v2/positionRisk",
+            params=params,
+            signed=True,
+        )
+
+    def get_open_orders(self, *, symbol: str | None = None) -> Any:
+        params: dict[str, Any] = {}
+        if symbol:
+            params["symbol"] = symbol
+        return self._request(
+            method="GET",
+            path="/fapi/v1/openOrders",
+            params=params,
+            signed=True,
+        )
+
+    def cancel_order(
+        self,
+        *,
+        symbol: str,
+        order_id: int | None = None,
+        orig_client_order_id: str | None = None,
+    ) -> Any:
+        if not symbol:
+            raise BinanceUsdmClientError("symbol no puede venir vacío.")
+        if order_id is None and not orig_client_order_id:
+            raise BinanceUsdmClientError(
+                "Debe informarse order_id u orig_client_order_id para cancelar orden."
+            )
+
+        params: dict[str, Any] = {"symbol": symbol}
+        if order_id is not None:
+            params["orderId"] = int(order_id)
+        if orig_client_order_id:
+            params["origClientOrderId"] = orig_client_order_id
+
+        return self._request(
+            method="DELETE",
+            path="/fapi/v1/order",
+            params=params,
+            signed=True,
+        )
+
     def place_order(
         self,
         *,

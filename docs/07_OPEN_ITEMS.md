@@ -41,7 +41,7 @@
 - [x] ya existe baseline v2 recortada y diagnostico consolidado reproducible
 
 ## Deuda tecnica confirmada
-- el modo live sigue sin estar implementado de punta a punta,
+- `live v0.1` ya existe en modo seguro, pero todavia sin routing de ordenes,
 - score ya gobierna backtest y paper, pero todavia no live,
 - la baseline v2 mejoro fuerte, pero sigue siendo fragil y heterogenea por simbolo,
 - el deploy Render esta preparado pero todavia no fue validado operativamente en runtime real,

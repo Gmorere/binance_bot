@@ -11,9 +11,9 @@
 ## Modos reales del repo
 - `backtest`: research reproducible por simbolo.
 - `paper`: runtime continuo con estado local y market data actualizable.
-- `live`: modo declarado en config, pero no implementado de punta a punta.
+- `live`: runtime `v0.1` seguro disponible para reconciliacion minima de cuenta Binance y heartbeat operativo, con ejecucion real bloqueada por default (`LIVE_ENABLED=false`).
 
-No conviene tratar `live` como si ya existiera. Hoy el camino operativo serio sigue siendo `backtest -> paper -> testnet/live controlado`.
+El camino operativo serio sigue siendo `backtest -> paper -> live v0.1 seguro -> live con routing real`.
 
 ## Operacion cloud esperada
 - El proceso corre dentro de un contenedor o runtime Linux.
@@ -61,7 +61,7 @@ No conviene tratar `live` como si ya existiera. Hoy el camino operativo serio si
 ## Lo que NO hace todavia
 - no consume websocket ni user stream,
 - no sincroniza ordenes ni posiciones reales con Binance,
-- no coloca ordenes reales de punta a punta,
+- no ejecuta routing de ordenes reales en `live v0.1` (guard-rail activo),
 - score ya puede gobernar aperturas paper si la config lo habilita, pero todavia no gobierna live,
 - no abre trades retroactivos sobre velas perdidas; el replay solo corrige gestion de posiciones abiertas,
 - el precio de entrada de paper sigue aproximado al `close` de la vela de senal.

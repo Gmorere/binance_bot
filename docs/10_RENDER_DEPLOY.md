@@ -24,6 +24,11 @@ Lo que sigue pendiente no es preparar el repo, sino aplicar y validar el worker 
 - feed de market data en produccion (`binance.use_testnet_market_data: false`) aunque el path de ordenes siga en testnet.
 - gating research `4h/1h`, restricciones por lado y score dinamico alineados con el `core` actual.
 
+## Live v0.1 seguro
+- El repo ya incluye [run_live.py](/D:/binance_futures_bot/run_live.py) y config [live.safe.yaml](/D:/binance_futures_bot/config/live.safe.yaml).
+- Este modo hace reconciliacion minima/heartbeat y mantiene ejecucion real bloqueada por defecto (`LIVE_ENABLED=false`).
+- No conviene desplegar live real hasta cerrar routing de ordenes, reconciliacion completa y alerting.
+
 ## Region recomendada
 - No conviene desplegar este worker en regiones USA de Render para paper sobre Binance Futures.
 - En la validacion real del worker, `Oregon` devolvio `451` desde `https://fapi.binance.com/fapi/v1/klines`, lo que apunta a restriccion geografica/regulatoria por egress de region US.
