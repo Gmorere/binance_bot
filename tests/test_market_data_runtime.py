@@ -219,6 +219,37 @@ class MarketDataRuntimeTests(unittest.TestCase):
         self.assertEqual(len(attempts), 2)
         self.assertTrue(any("data_refresh_error_backoff" in line for line in outputs))
 
+    def test_polling_service_avoids_short_loop_when_refresh_is_throttled_in_same_bucket(self) -> None:
+        self.config["data"]["refresh_from_binance_rest"] = True  # type: ignore[index]
+        outputs: list[str] = []
+        attempts: list[dict[str, object]] = []
+
+        def failing_refresh(**kwargs: object) -> RefreshResult:
+            attempts.append(kwargs)
+            raise BinanceKlineUpdaterError("418 teapot")
+
+        service = build_market_data_service(
+            self.config,
+            output_fn=outputs.append,
+            refresh_symbol_timeframe_csv_fn=failing_refresh,
+        )
+
+        first_now_ms = int(pd.Timestamp("2026-01-01T01:30:00Z").timestamp() * 1000)
+        second_now_ms = first_now_ms + 121000  # mismo bucket de 15m, ya pasado el backoff inicial
+        third_now_ms = second_now_ms + 15000
+
+        service.poll(now_ms=first_now_ms)
+        second_result = service.poll(now_ms=second_now_ms)
+        third_result = service.poll(now_ms=third_now_ms)
+
+        expected_next_refresh_ms = int(pd.Timestamp("2026-01-01T01:45:03Z").timestamp() * 1000)
+        self.assertEqual(len(attempts), 1)
+        self.assertEqual(second_result.next_poll_after_ms, expected_next_refresh_ms)
+        self.assertEqual(third_result.next_poll_after_ms, expected_next_refresh_ms)
+        self.assertGreater(second_result.next_poll_after_ms - second_now_ms, 600000)
+        self.assertTrue(any("data_refresh_throttled" in line for line in outputs))
+        self.assertTrue(any("data_refresh_skip" in line for line in outputs))
+
     def test_polling_service_respects_next_candle_close_before_refreshing_again(self) -> None:
         self.config["data"]["refresh_from_binance_rest"] = True  # type: ignore[index]
         refresh_calls: list[dict[str, object]] = []

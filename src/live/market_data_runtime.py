@@ -57,6 +57,7 @@ class PollingMarketDataService:
         self._cached_snapshot: MarketDataSnapshot | None = None
         self._next_refresh_after_ms: int | None = None
         self._last_refresh_error_count: int = 0
+        self._last_refresh_attempt_count: int = 0
         self._last_refresh_attempt_bucket_by_symbol_timeframe: dict[tuple[str, str], int] = {}
 
     def poll(self, *, now_ms: int | None = None) -> MarketDataPollResult:
@@ -97,6 +98,21 @@ class PollingMarketDataService:
                 snapshot,
                 now_ms=resolved_now_ms,
             )
+            if self._last_refresh_attempt_count == 0:
+                entry_interval_ms = _resolve_interval_ms(snapshot.entry_timeframe)
+                grace_ms = int(self.runtime.candle_close_grace_seconds) * 1000
+                throttled_next_ms = _next_interval_boundary_ms(
+                    resolved_now_ms,
+                    entry_interval_ms,
+                ) + grace_ms
+                self._next_refresh_after_ms = max(
+                    int(self._next_refresh_after_ms),
+                    throttled_next_ms,
+                )
+                self.output_fn(
+                    "data_refresh_throttled "
+                    f"next_attempt_after_ms={self._next_refresh_after_ms}"
+                )
             if self._last_refresh_error_count > 0:
                 error_cooldown_ms = int(self.runtime.refresh_error_backoff_seconds) * 1000
                 if snapshot.latest_timestamps:
@@ -142,6 +158,7 @@ class PollingMarketDataService:
 
         results: list[RefreshResult] = []
         refresh_errors = 0
+        refresh_attempts = 0
         for symbol in symbols:
             for timeframe in timeframes_to_refresh:
                 if not self._should_attempt_refresh(
@@ -150,6 +167,7 @@ class PollingMarketDataService:
                     now_ms=resolved_now_ms,
                 ):
                     continue
+                refresh_attempts += 1
 
                 try:
                     result = self.refresh_symbol_timeframe_csv_fn(
@@ -179,7 +197,9 @@ class PollingMarketDataService:
                     f"latest_timestamp={result.latest_timestamp}"
                 )
 
-        self._last_refresh_error_count = refresh_errors
+        self._last_refresh_attempt_count = refresh_attempts
+        if refresh_attempts > 0:
+            self._last_refresh_error_count = refresh_errors
         return results
 
     def _should_attempt_refresh(

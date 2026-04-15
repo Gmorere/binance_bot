@@ -19,6 +19,13 @@
 7. El deploy cloud concreto elegido hoy es Render worker con disco persistente.
 
 ## Registro de cambios
+### 2026-04-15
+- Cambio: ajuste de scheduler en [market_data_runtime.py](/D:/binance_futures_bot/src/live/market_data_runtime.py) para evitar micro-loop de polling cuando el refresh REST ya fue throttled en el mismo bucket de vela.
+- Motivo: con `418` intermitente, el runtime podía quedar en ciclos de ~15s con `no_new_candles` aunque no correspondía reintentar refresh todavía.
+- Impacto esperado: menos ruido operativo en logs, menor presión innecesaria sobre Binance y retorno al ritmo natural de siguiente cierre de vela + `grace`.
+- Validacion realizada: test nuevo en [test_market_data_runtime.py](/D:/binance_futures_bot/tests/test_market_data_runtime.py) (`avoids_short_loop_when_refresh_is_throttled_in_same_bucket`) y suite focal (`market_data_runtime`, `paper_runtime`, `config_loader`) en verde.
+- Riesgo residual: el `418` externo sigue siendo un riesgo de disponibilidad del feed; esta corrección mitiga el loop interno, no elimina la causa externa.
+
 ### 2026-04-13
 - Cambio: se incorpora `live v0.1` seguro con [run_live.py](/D:/binance_futures_bot/run_live.py) y [live_runtime.py](/D:/binance_futures_bot/src/live/live_runtime.py), incluyendo guard-rail por entorno `LIVE_ENABLED` (default bloqueado), reconciliación mínima de cuenta y heartbeat operativo.
 - Motivo: faltaba una etapa formal entre paper y live real para validar conectividad, credenciales y estado de cuenta sin riesgo de envío accidental de órdenes.
