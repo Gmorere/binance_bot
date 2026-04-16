@@ -32,6 +32,8 @@ _HELP_TEXT = (
     "/status  — equity, posiciones abiertas, ciclos\n"
     "/pos     — detalle de posiciones abiertas\n"
     "/pnl     — PnL de hoy, semana y total\n"
+    "/pause   — pausar nuevas entradas\n"
+    "/resume  — retomar operacion normal\n"
     "/help    — este mensaje"
 )
 
@@ -126,8 +128,13 @@ class TelegramNotifier:
         state: Any,
         cycles_executed: int,
         cycle_errors: int,
-    ) -> None:
-        """Procesa la lista de comandos y envia las respuestas correspondientes."""
+        trading_paused: bool = False,
+    ) -> list[str]:
+        """
+        Procesa la lista de comandos y envia las respuestas correspondientes.
+        Devuelve lista de acciones para el runtime: ["pause"] o ["resume"].
+        """
+        actions: list[str] = []
         for cmd in commands:
             if cmd == "/help":
                 self.send(_HELP_TEXT)
@@ -137,13 +144,32 @@ class TelegramNotifier:
                     state=state,
                     cycles_executed=cycles_executed,
                     cycle_errors=cycle_errors,
+                    trading_paused=trading_paused,
                 )
             elif cmd == "/pos":
                 self._send_positions(mode=mode, state=state)
             elif cmd == "/pnl":
                 self._send_pnl(mode=mode, state=state)
+            elif cmd == "/pause":
+                if trading_paused:
+                    self.send(f"[{mode.upper()}] El bot ya esta pausado. Usa /resume para retomar.")
+                else:
+                    actions.append("pause")
+                    self.send(
+                        f"[{mode.upper()}] PAUSADO\n"
+                        "No se abriran nuevas entradas.\n"
+                        "Las posiciones abiertas siguen siendo monitoreadas.\n"
+                        "Usa /resume para retomar."
+                    )
+            elif cmd == "/resume":
+                if not trading_paused:
+                    self.send(f"[{mode.upper()}] El bot ya esta activo.")
+                else:
+                    actions.append("resume")
+                    self.send(f"[{mode.upper()}] REANUDADO\nEl bot volvera a abrir entradas normalmente.")
             else:
                 self.send(f"Comando no reconocido: {cmd}\n\n{_HELP_TEXT}")
+        return actions
 
     def _send_status(
         self,
@@ -152,13 +178,15 @@ class TelegramNotifier:
         state: Any,
         cycles_executed: int,
         cycle_errors: int,
+        trading_paused: bool = False,
     ) -> None:
         open_pos = len(state.open_positions)
         total_pnl = state.equity - state.initial_capital
         total_pnl_pct = total_pnl / state.initial_capital * 100
         total_sign = "+" if total_pnl >= 0 else ""
+        paused_line = "\nESTADO: PAUSADO (usa /resume para retomar)" if trading_paused else ""
         self.send(
-            f"[{mode.upper()}] STATUS\n"
+            f"[{mode.upper()}] STATUS{paused_line}\n"
             f"Equity:    ${state.equity:,.2f}  ({total_sign}{total_pnl_pct:.2f}%)\n"
             f"Posiciones abiertas: {open_pos}\n"
             f"Riesgo abierto: {state.open_risk_pct*100:.2f}%\n"

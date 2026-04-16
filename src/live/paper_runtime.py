@@ -65,6 +65,11 @@ def run_paper_runtime_loop(
     service = market_data_service or build_market_data_service(config, output_fn=output_fn)
     telegram = notifier if notifier is not None else build_notifier()
 
+    pause_flag_path = Path(paths["outputs_path"]) / "paper" / "bot_paused"
+    trading_paused: bool = pause_flag_path.exists()
+    if trading_paused:
+        output_fn("trading_paused=True (flag file found, use /resume to re-enable)")
+
     cycles_executed = 0
     cycles_with_new_candles = 0
     cycle_errors = 0
@@ -84,7 +89,7 @@ def run_paper_runtime_loop(
                 f"cycle={cycle_number} symbols={sorted(snapshot.market_data_by_symbol.keys())} new_candles={new_symbols}"
             )
 
-            if new_symbols:
+            if new_symbols and not trading_paused:
                 positions_before = dict(state.open_positions)
                 result = run_paper_cycle(
                     config=config,
@@ -114,6 +119,8 @@ def run_paper_runtime_loop(
                     state=state,
                     events=result.events,
                 )
+            elif trading_paused and new_symbols:
+                output_fn(f"paused symbols={new_symbols} skipping_new_entries")
             else:
                 output_fn("no_new_candles")
         except Exception as exc:
@@ -162,13 +169,22 @@ def run_paper_runtime_loop(
         commands = telegram.poll_commands()
         if commands:
             output_fn(f"telegram_commands={commands}")
-            telegram.handle_commands(
+            actions = telegram.handle_commands(
                 commands,
                 mode=runtime.mode,
                 state=state,
                 cycles_executed=cycles_executed,
                 cycle_errors=cycle_errors,
+                trading_paused=trading_paused,
             )
+            if "pause" in actions and not trading_paused:
+                trading_paused = True
+                pause_flag_path.touch()
+                output_fn("trading_paused=True")
+            if "resume" in actions and trading_paused:
+                trading_paused = False
+                pause_flag_path.unlink(missing_ok=True)
+                output_fn("trading_paused=False")
 
         output_fn(
             "runtime_status "
