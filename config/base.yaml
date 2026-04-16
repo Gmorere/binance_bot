@@ -18,9 +18,6 @@ symbols:
   enabled:
     - "BTCUSDT"
     - "ETHUSDT"
-    - "SOLUSDT"
-    - "BNBUSDT"
-    - "XRPUSDT"
 
 timeframes:
   context: "4h"
@@ -43,10 +40,6 @@ strategy:
   backtest_policy:
     enabled: true
     enforce_context_alignment: true
-    excluded_symbols:
-      - "BNBUSDT"
-      - "SOLUSDT"
-      - "XRPUSDT"
     allowed_sides:
       BTCUSDT:
         - "SHORT"
@@ -82,17 +75,11 @@ risk:
 leverage:
   BTCUSDT: 8
   ETHUSDT: 8
-  SOLUSDT: 5
-  BNBUSDT: 5
-  XRPUSDT: 5
 
 position_limits:
   max_notional_pct:
     BTCUSDT: 0.80
     ETHUSDT: 0.90
-    SOLUSDT: 0.35
-    BNBUSDT: 0.35
-    XRPUSDT: 0.35
 
 execution:
   fee_rate_entry: 0.0004
@@ -101,9 +88,6 @@ execution:
   slippage:
     BTCUSDT: 0.0002
     ETHUSDT: 0.0003
-    SOLUSDT: 0.0005
-    BNBUSDT: 0.0005
-    XRPUSDT: 0.0006
 
 filters:
   min_rr_net: 1.8

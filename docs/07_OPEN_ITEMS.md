@@ -6,12 +6,15 @@
 - [ ] definir reconciliacion de ordenes y posiciones ante respuestas `503` y estado desconocido
 - [ ] integrar limites agregados de portafolio y perdida al research de forma coherente con el runtime
 - [ ] decidir si el score dinamico debe pasar tambien a live o si queda limitado a backtest/paper por ahora
-- [ ] decidir si `SOLUSDT` y `XRPUSDT` siguen en el universo research actual o requieren mas recorte
-- [ ] decidir si `ETH PULLBACK` sigue vivo como research; hoy el walk-forward trimestral mejora solo por `2` trades extra y necesita mas historico antes de promotion
+- [x] decidir si `SOLUSDT` y `XRPUSDT` siguen en el universo research actual o requieren mas recorte
+  — **Decision 2026-04-16**: SOLUSDT y XRPUSDT cortados del universo. XRP: PF 1.12, 31 trades, break-even. SOL: PF 1.37, 22 trades, MaxDD desproporcionado. Eliminados de `base.yaml`. Labs de research conservados en `config/research.xrp_long.yaml`.
+- [x] decidir si `ETH PULLBACK` sigue vivo como research; hoy el walk-forward trimestral mejora solo por `2` trades extra y necesita mas historico antes de promotion
+  — **Decision 2026-04-16**: ETH PULLBACK se mantiene como research, no se promueve. Walk-forward completo (Q1 2025 - Q1 2026 con slippage correcto): solo 2 trades extra en 5 trimestres. En los 4 trimestres perdedores no rescata el resultado. Re-evaluar cuando haya 2-3 trimestres mas de datos.
 - [ ] decidir si el slippage simple actual alcanza o si hace falta modelado mas realista por tipo de salida/latencia
 - [ ] definir metricas de portafolio y no solo por simbolo
 - [ ] convertir `max_drawdown` a una convencion unica y explicita
-- [ ] aplicar y validar el worker de Render en entorno real
+- [x] aplicar y validar el worker de Render en entorno real
+  — **Validado 2026-04-16**: worker desplegado en Render Frankfurt, descarga datos REST BTC+ETH, corre ciclos de paper sin errores. Instancia primaria de paper trading.
 - [ ] agregar observabilidad y alertas operativas en Render
 
 ## Hechos confirmados que cambian el backlog
@@ -44,7 +47,7 @@
 - `live v0.1` ya existe en modo seguro, pero todavia sin routing de ordenes,
 - score ya gobierna backtest y paper, pero todavia no live,
 - la baseline v2 mejoro fuerte, pero sigue siendo fragil y heterogenea por simbolo,
-- el deploy Render esta preparado pero todavia no fue validado operativamente en runtime real,
+- el deploy Render ya fue validado operativamente (2026-04-16), pero sin observabilidad ni alertas,
 - la cobertura automatizada mejoro, pero todavia no cubre reconciliacion ni exchange live.
 
 ## Riesgos de la siguiente fase

@@ -139,6 +139,8 @@ def run_period_variant(
         max_notional_pct=float(config["position_limits"]["max_notional_pct"][symbol]),
         fee_rate_entry=float(config["execution"]["fee_rate_entry"]),
         fee_rate_exit=float(config["execution"]["fee_rate_exit"]),
+        slippage_pct=float(config["execution"]["slippage"].get(symbol, 0.0003)),
+        stop_buffer_atr_fraction=float(config["filters"].get("stop_buffer_atr_fraction", 0.10)),
         min_candles=6,
         max_candles=12,
         max_range_atr_multiple=float(
@@ -185,7 +187,7 @@ def run_period_variant(
     trades_df, metrics, _equity_curve_df = runner.run()
     trades_df = trades_df.copy()
     if not trades_df.empty:
-        trades_df.loc[:, "entry_time"] = pd.to_datetime(trades_df["entry_time"], utc=True)
+        trades_df = trades_df.assign(entry_time=pd.to_datetime(trades_df["entry_time"], utc=True))
         trades_df = trades_df[
             (trades_df["entry_time"] >= period_start)
             & (trades_df["entry_time"] <= period_end)
