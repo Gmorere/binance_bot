@@ -4,8 +4,8 @@ from __future__ import annotations
 notifier.py — Alertas por Telegram para el runtime de paper trading.
 
 Configuracion via variables de entorno:
-  TELEGRAM_BOT_TOKEN  — token del bot (de @BotFather)
-  TELEGRAM_CHAT_ID    — chat ID del destinatario
+  TG_BOT_TOKEN  — token del bot (de @BotFather)
+  TG_CHAT_ID    — chat ID del destinatario
 
 Si alguna de las dos variables no esta presente, el notificador queda
 deshabilitado silenciosamente: ninguna llamada genera error ni side-effect.
@@ -154,6 +154,6 @@ def build_notifier(env: dict[str, str] | None = None) -> TelegramNotifier:
     del entorno. Si alguna variable falta, devuelve un notificador deshabilitado.
     """
     source: Any = env if env is not None else os.environ
-    token = str(source.get("TELEGRAM_BOT_TOKEN", "")).strip()
-    chat_id = str(source.get("TELEGRAM_CHAT_ID", "")).strip()
+    token = str(source.get("TG_BOT_TOKEN", "")).strip()
+    chat_id = str(source.get("TG_CHAT_ID", "")).strip()
     return TelegramNotifier(token=token, chat_id=chat_id)
