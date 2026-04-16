@@ -2,10 +2,13 @@
 
 ## Abiertos despues de la auditoria
 - [ ] reemplazar `PollingMarketDataService` por una fuente mas cercana a tiempo real con websocket o polling dedicado
+  — **Diferido a live**: para estrategia 15m la latencia REST (~2-4s vs websocket) no afecta el edge. Relevante cuando haya ordenes reales donde la latencia de entrada importe.
 - [ ] separar claramente market data polling vs user/account sync
+  — **Diferido a live**: no aplica hasta tener account sync real. En paper mode no hay estado de cuenta externo que sincronizar.
 - [ ] definir reconciliacion de ordenes y posiciones ante respuestas `503` y estado desconocido
 - [ ] integrar limites agregados de portafolio y perdida al research de forma coherente con el runtime
-- [ ] decidir si el score dinamico debe pasar tambien a live o si queda limitado a backtest/paper por ahora
+- [x] decidir si el score dinamico debe pasar tambien a live o si queda limitado a backtest/paper por ahora
+  — **Decision 2026-04-16**: el score va a live sin excepcion. No es un feature experimental sino el sistema de riesgo del core. Backtest y paper fueron validados con score activo; desactivarlo en live seria inconsistente. La implementacion es parte del routing de ordenes (ver item de reconciliacion).
 - [x] decidir si `SOLUSDT` y `XRPUSDT` siguen en el universo research actual o requieren mas recorte
   — **Decision 2026-04-16**: SOLUSDT y XRPUSDT cortados del universo. XRP: PF 1.12, 31 trades, break-even. SOL: PF 1.37, 22 trades, MaxDD desproporcionado. Eliminados de `base.yaml`. Labs de research conservados en `config/research.xrp_long.yaml`.
 - [x] decidir si `ETH PULLBACK` sigue vivo como research; hoy el walk-forward trimestral mejora solo por `2` trades extra y necesita mas historico antes de promotion
@@ -15,7 +18,8 @@
 - [ ] convertir `max_drawdown` a una convencion unica y explicita
 - [x] aplicar y validar el worker de Render en entorno real
   — **Validado 2026-04-16**: worker desplegado en Render Frankfurt, descarga datos REST BTC+ETH, corre ciclos de paper sin errores. Instancia primaria de paper trading.
-- [ ] agregar observabilidad y alertas operativas en Render
+- [x] agregar observabilidad y alertas operativas en Render
+  — **Implementado 2026-04-16**: Telegram bot con alertas de trade (open/close), errores de ciclo, heartbeat diario y comandos /help /status /pos /pnl /pause /resume.
 
 ## Hechos confirmados que cambian el backlog
 - [x] el repo ya no depende de rutas absolutas Windows para correr
