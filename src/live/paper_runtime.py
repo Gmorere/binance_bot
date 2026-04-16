@@ -159,6 +159,17 @@ def run_paper_runtime_loop(
         if max_cycles is not None and cycles_executed >= max_cycles:
             break
 
+        commands = telegram.poll_commands()
+        if commands:
+            output_fn(f"telegram_commands={commands}")
+            telegram.handle_commands(
+                commands,
+                mode=runtime.mode,
+                state=state,
+                cycles_executed=cycles_executed,
+                cycle_errors=cycle_errors,
+            )
+
         output_fn(
             "runtime_status "
             f"cycles={cycles_executed} cycles_with_new_candles={cycles_with_new_candles} "
