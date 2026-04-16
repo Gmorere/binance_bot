@@ -1,7 +1,16 @@
 # 10 - Render Deploy
 
 ## Estado real
-El repo ya tiene base de despliegue para Render y ya no esta bloqueado por falta de remoto.
+Worker desplegado y operativo en Render (Frankfurt). Validado el 2026-04-16.
+
+### Instancia primaria de paper trading
+La instancia autoritativa de paper trading es el worker de Render corriendo `config/render.paper.yaml`.
+El paper local (`config/paper.1h_btceth_v1.yaml`) existe para debug/desarrollo y esta sincronizado
+con la config de Render, pero NO es la fuente de verdad operativa.
+
+- Los trades reales de paper se acumulan en `/app/runtime/outputs` del disco persistente de Render.
+- El estado local en `outputs/paper/paper_state.json` se usa solo para pruebas locales.
+- Ante cualquier discrepancia, los logs y estado de Render prevalecen.
 
 Artefactos relevantes:
 - [render.yaml](/D:/binance_futures_bot/render.yaml)
