@@ -43,13 +43,17 @@ def validate_ohlcv_dataframe(
 
     validated = df.loc[:, REQUIRED_COLUMNS].copy()
 
-    validated.loc[:, "timestamp"] = pd.to_datetime(
-        validated["timestamp"], utc=True, errors="coerce"
+    # Pandas 3.0: no usar .loc para asignar tipos incompatibles con el dtype de la columna.
+    validated = validated.assign(
+        timestamp=pd.to_datetime(validated["timestamp"], utc=True, errors="coerce"),
+        open=pd.to_numeric(validated["open"], errors="coerce"),
+        high=pd.to_numeric(validated["high"], errors="coerce"),
+        low=pd.to_numeric(validated["low"], errors="coerce"),
+        close=pd.to_numeric(validated["close"], errors="coerce"),
+        volume=pd.to_numeric(validated["volume"], errors="coerce"),
     )
 
     numeric_cols = ["open", "high", "low", "close", "volume"]
-    for col in numeric_cols:
-        validated.loc[:, col] = pd.to_numeric(validated[col], errors="coerce")
 
     if validated["timestamp"].isna().any():
         raise DataLoaderError(f"Hay timestamps inválidos en {symbol} {timeframe}.")

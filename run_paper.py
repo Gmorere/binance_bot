@@ -1,6 +1,10 @@
 ﻿from __future__ import annotations
 
 import argparse
+from pathlib import Path
+
+from dotenv import load_dotenv
+load_dotenv(Path(__file__).parent / ".env")
 
 from src.core.config_loader import get_default_config_path, load_config
 from src.live.paper_runtime import run_paper_runtime_loop

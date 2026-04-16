@@ -104,8 +104,10 @@ def normalize_binance_kline_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     ]
 
     normalized = renamed[["open_time", "open", "high", "low", "close", "volume"]].copy()
+    # Pandas 3.0+ requiere que el valor sea numérico antes de usar unit="ms".
     normalized["timestamp"] = pd.to_datetime(
-        normalized["open_time"], unit="ms", utc=True, errors="coerce"
+        pd.to_numeric(normalized["open_time"], errors="coerce"),
+        unit="ms", utc=True, errors="coerce",
     )
 
     for col in ["open", "high", "low", "close", "volume"]:

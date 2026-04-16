@@ -26,6 +26,7 @@ from src.risk.risk_engine import get_risk_pct_for_bucket
 from src.strategy.context_policy import evaluate_trade_candidate_policy
 from src.strategy.scoring_policy import (
     CandidateRiskResolution,
+    ScoringPolicyError,
     resolve_candidate_risk_from_score,
 )
 from src.strategy.runtime_policy import (
@@ -36,6 +37,12 @@ from src.strategy.runtime_policy import (
     resolve_symbol_backtest_risk as _resolve_symbol_backtest_risk,
     resolve_symbol_filters as _resolve_symbol_filters,
     resolve_symbol_trade_management as _resolve_symbol_trade_management,
+)
+from src.strategy.blackout_filter import (
+    BlackoutPeriod,
+    load_blackout_periods,
+    is_blackout,
+    describe_blackout_periods,
 )
 
 
@@ -215,8 +222,14 @@ def build_signal_fn(
     risk_by_score: dict[str, float] | None = None,
     dynamic_risk_enabled: bool = False,
     preserve_symbol_base_risk: bool = True,
+    blackout_periods: list[BlackoutPeriod] | None = None,
 ):
     def signal_fn(df: pd.DataFrame, i: int) -> dict | None:
+        if blackout_periods:
+            current_ts = df.iloc[i]["timestamp"]
+            if is_blackout(current_ts, blackout_periods):
+                return None
+
         signal = build_breakout_signal_for_index(
             symbol=symbol,
             market_df=df,
@@ -307,16 +320,28 @@ def _resolve_candidate_risk(
             notes=["Dynamic risk deshabilitado por falta de contexto 1h/4h."],
         )
 
-    risk_resolution = resolve_candidate_risk_from_score(
-        symbol=symbol,
-        candidate=candidate,
-        df_1h=df_1h,
-        df_4h=df_4h,
-        score_thresholds=score_thresholds,
-        risk_by_score=risk_by_score,
-        open_positions=0,
-        same_side_exposure_count=0,
-    )
+    try:
+        risk_resolution = resolve_candidate_risk_from_score(
+            symbol=symbol,
+            candidate=candidate,
+            df_1h=df_1h,
+            df_4h=df_4h,
+            score_thresholds=score_thresholds,
+            risk_by_score=risk_by_score,
+            open_positions=0,
+            same_side_exposure_count=0,
+        )
+    except ScoringPolicyError as exc:
+        return CandidateRiskResolution(
+            trade_allowed=True,
+            risk_pct=float(default_risk_pct),
+            risk_bucket=str(default_risk_bucket),
+            score_total=0.0,
+            notes=[
+                "Dynamic risk fallback por error de contexto/score.",
+                str(exc),
+            ],
+        )
 
     if (
         preserve_symbol_base_risk
@@ -387,16 +412,27 @@ def main() -> None:
     for note in backtest_risk_notes:
         print(f"- {note}")
 
+    blackout_periods = load_blackout_periods(config)
+    if blackout_periods:
+        print(f"Blackout activo ({len(blackout_periods)} periodos):")
+        print(describe_blackout_periods(blackout_periods))
+    else:
+        print("Blackout: deshabilitado o sin periodos configurados.")
+
+    entry_tf = str(config.get("timeframes", {}).get("entry", "15m"))
+    load_timeframes = tuple(dict.fromkeys(["1h", "4h", entry_tf]))
+
+    print(f"Entry timeframe: {entry_tf}")
     print("\nCargando datos historicos...")
     all_data = load_all_symbols(
         raw_data_path=paths["raw_data_path"],
         symbols=symbols,
-        timeframes=("15m", "1h", "4h"),
+        timeframes=load_timeframes,
     )
 
     print("\nResumen de carga:")
     for symbol, bundle in all_data.items():
-        for timeframe in ("15m", "1h", "4h"):
+        for timeframe in load_timeframes:
             summary = summarize_dataframe(bundle[timeframe])
             print(
                 f"{symbol} {timeframe}: filas={summary['rows']}, "
@@ -411,9 +447,22 @@ def main() -> None:
     for symbol in symbols:
         print(f"==================== {symbol} ====================")
 
-        df_15m = add_basic_indicators(all_data[symbol]["15m"]).reset_index(drop=True)
-        df_1h = add_basic_indicators(all_data[symbol]["1h"]).reset_index(drop=True)
         df_4h = add_basic_indicators(all_data[symbol]["4h"]).reset_index(drop=True)
+        df_entry = add_basic_indicators(all_data[symbol][entry_tf]).reset_index(drop=True)
+
+        # Cuando el entry es 1H, no existe un TF de bias independiente más granular.
+        # Usamos df_4h como contexto en ambos niveles para que el filtro combinado
+        # evalúe únicamente la tendencia 4H (macro). Esto evita circularidad con 1H.
+        # Cuando el entry es 15m, usamos df_1h como bias intermedio y df_4h como contexto macro.
+        if entry_tf == "1h":
+            context_df_1h = df_4h
+        else:
+            context_df_1h = add_basic_indicators(all_data[symbol]["1h"]).reset_index(drop=True)
+        context_df_4h = df_4h
+
+        # max_forward_bars: ventana de simulación hacia adelante desde la señal.
+        # 15m → 80 barras = ~20h | 1H → 30 barras = 30h (más margen para desarrollarse)
+        max_forward_bars = 30 if entry_tf == "1h" else 80
         symbol_filters = resolve_symbol_filters(config, symbol)
         symbol_trade_management = resolve_symbol_trade_management(config, symbol)
         symbol_risk_pct, symbol_risk_bucket = resolve_symbol_backtest_risk(
@@ -471,11 +520,11 @@ def main() -> None:
                 if "max_trigger_body_atr_multiple" in pullback_settings
                 else None
             ),
-            max_forward_bars=80,
+            max_forward_bars=max_forward_bars,
             max_bars_in_trade=int(symbol_trade_management["max_bars_in_trade"]),
             force_close_on_last_candle=True,
-            df_1h=df_1h if bool(backtest_policy["enabled"]) else None,
-            df_4h=df_4h if bool(backtest_policy["enabled"]) else None,
+            df_1h=context_df_1h if bool(backtest_policy["enabled"]) else None,
+            df_4h=context_df_4h if bool(backtest_policy["enabled"]) else None,
             enforce_context_alignment=bool(
                 backtest_policy["enabled"]
                 and backtest_policy["enforce_context_alignment"]
@@ -498,6 +547,7 @@ def main() -> None:
             preserve_symbol_base_risk=bool(
                 dynamic_risk_policy["preserve_symbol_base_risk"]
             ),
+            blackout_periods=blackout_periods if blackout_periods else None,
         )
         print(
             "Filters -> "
@@ -511,7 +561,7 @@ def main() -> None:
 
         runner = BacktestRunner(
             symbol=symbol,
-            market_df=df_15m,
+            market_df=df_entry,
             signal_fn=signal_fn,
             output_dir=str(output_dir),
             initial_capital=float(config["capital"]["initial_capital"]),
@@ -544,7 +594,7 @@ def main() -> None:
         symbol_records.append(
             build_symbol_baseline_record(
                 symbol=symbol,
-                market_df=df_15m,
+                market_df=df_entry,
                 trades_df=trades_df,
                 metrics=metrics,
                 initial_capital=float(config["capital"]["initial_capital"]),

@@ -312,6 +312,55 @@ class BacktestRunnerTests(unittest.TestCase):
             any("preserva riesgo base del simbolo" in note for note in resolution.notes)
         )
 
+    def test_resolve_candidate_risk_falls_back_to_default_when_context_is_insufficient(self) -> None:
+        candidate = TradeCandidate(
+            order_plan=OrderPlan(
+                symbol="BTCUSDT",
+                side="SHORT",
+                entry_price=95.0,
+                stop_price=97.0,
+                tp1_price=93.0,
+                tp2_price=91.0,
+                rr_1=1.0,
+                rr_2=2.0,
+                breakout_level=96.0,
+                setup_type="BREAKOUT",
+                notes=[],
+            ),
+            setup_notes=[],
+            trigger_index=35,
+            trigger_timestamp=pd.Timestamp("2026-01-02T20:00:00Z"),
+            setup_type="BREAKOUT",
+            volume_ratio=1.0,
+            trigger_too_extended=False,
+        )
+        df_1h = _build_short_context_df("1h").head(2)
+        df_4h = _build_short_context_df("4h").head(2)
+
+        resolution = _resolve_candidate_risk(
+            symbol="BTCUSDT",
+            candidate=candidate,
+            default_risk_pct=0.0085,
+            default_risk_bucket="strong",
+            df_1h=df_1h,
+            df_4h=df_4h,
+            score_thresholds={"min_trade": 75.0, "aggressive": 85.0, "exceptional": 93.0},
+            risk_by_score={
+                "small": 0.0040,
+                "normal": 0.0060,
+                "strong": 0.0085,
+                "exceptional": 0.0110,
+            },
+            preserve_symbol_base_risk=True,
+        )
+
+        self.assertTrue(resolution.trade_allowed)
+        self.assertAlmostEqual(resolution.risk_pct, 0.0085, places=6)
+        self.assertEqual(resolution.risk_bucket, "strong")
+        self.assertTrue(
+            any("Dynamic risk fallback por error de contexto/score." in note for note in resolution.notes)
+        )
+
     def test_resolve_symbol_allowed_setups_prefers_symbol_override(self) -> None:
         resolved = resolve_symbol_allowed_setups(
             {

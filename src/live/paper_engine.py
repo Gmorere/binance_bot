@@ -33,6 +33,7 @@ from src.strategy.runtime_policy import (
 )
 from src.strategy.setup_detector import detect_breakout_setup, detect_pullback_setup
 from src.strategy.signal_service import detect_trade_candidate
+from src.strategy.blackout_filter import load_blackout_periods, is_blackout
 
 
 class PaperEngineError(Exception):
@@ -768,6 +769,7 @@ def run_paper_cycle(
 
     backtest_policy = load_backtest_strategy_policy(dict(config))
     dynamic_risk_policy = load_dynamic_risk_policy(dict(config))
+    blackout_periods = load_blackout_periods(dict(config))
     bias_market_data_by_symbol = dict(bias_market_data_by_symbol or {})
     context_market_data_by_symbol = dict(context_market_data_by_symbol or {})
     non_empty_frames = [df for df in market_data_by_symbol.values() if not df.empty]
@@ -893,6 +895,25 @@ def run_paper_cycle(
                     if "max_trigger_body_atr_multiple" in pullback_settings
                     else None
                 ),
+            )
+
+        if blackout_periods and is_blackout(cycle_timestamp, blackout_periods):
+            for symbol in sorted(eligible_market_data.keys()):
+                _append_event(state, events, f"SKIP {symbol} blackout: {cycle_timestamp.date().isoformat()}")
+                _record_symbol_decision(
+                    symbol=symbol,
+                    decision="blackout",
+                    decision_counts=decision_counts,
+                    symbol_decisions=symbol_decisions,
+                )
+            return PaperCycleResult(
+                state=state,
+                opened_symbols=opened_symbols,
+                closed_symbols=closed_symbols,
+                updated_symbols=updated_symbols,
+                events=events,
+                decision_counts=decision_counts,
+                symbol_decisions=symbol_decisions,
             )
 
         candidates = scan_trade_candidates(
