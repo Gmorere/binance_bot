@@ -11,6 +11,7 @@ from src.live.market_data_runtime import (
     build_market_data_service,
     detect_symbols_with_new_candles,
 )
+from src.live.notifier import TelegramNotifier, build_notifier
 from src.live.paper_engine import load_paper_state, run_paper_cycle, save_paper_state
 from src.live.runtime_config import load_runtime_config
 
@@ -46,6 +47,7 @@ def run_paper_runtime_loop(
     sleep_fn: SleepFn = time.sleep,
     time_fn: TimeFn = time.time,
     market_data_service: MarketDataService | None = None,
+    notifier: TelegramNotifier | None = None,
 ) -> PaperRuntimeSummary:
     runtime = load_runtime_config(config)
     if runtime.mode != "paper":
@@ -61,10 +63,12 @@ def run_paper_runtime_loop(
         initial_capital=float(config["capital"]["initial_capital"]),  # type: ignore[index]
     )
     service = market_data_service or build_market_data_service(config, output_fn=output_fn)
+    telegram = notifier if notifier is not None else build_notifier()
 
     cycles_executed = 0
     cycles_with_new_candles = 0
     cycle_errors = 0
+    last_heartbeat_day: str | None = None
 
     while True:
         cycle_number = cycles_executed + 1
@@ -81,6 +85,7 @@ def run_paper_runtime_loop(
             )
 
             if new_symbols:
+                positions_before = dict(state.open_positions)
                 result = run_paper_cycle(
                     config=config,
                     market_data_by_symbol=snapshot.market_data_by_symbol,
@@ -99,6 +104,16 @@ def run_paper_runtime_loop(
                 )
                 for event in result.events[-10:]:
                     output_fn(f"event={event}")
+
+                _notify_trade_events(
+                    telegram=telegram,
+                    mode=runtime.mode,
+                    opened_symbols=result.opened_symbols,
+                    closed_symbols=result.closed_symbols,
+                    positions_before=positions_before,
+                    state=state,
+                    events=result.events,
+                )
             else:
                 output_fn("no_new_candles")
         except Exception as exc:
@@ -111,6 +126,13 @@ def run_paper_runtime_loop(
             output_fn(
                 "runtime_cycle_error "
                 f"cycle={cycle_number} error_type={type(exc).__name__} error={exc}"
+            )
+            telegram.notify_cycle_error(
+                mode=runtime.mode,
+                cycle=cycle_number,
+                total_errors=cycle_errors,
+                error_type=type(exc).__name__,
+                error_msg=str(exc),
             )
             cycles_executed += 1
             output_fn(
@@ -144,6 +166,21 @@ def run_paper_runtime_loop(
             f"open_risk_pct={state.open_risk_pct:.4f} equity={state.equity:.4f}"
         )
 
+        today_utc = state.current_day
+        if today_utc and today_utc != last_heartbeat_day:
+            last_heartbeat_day = today_utc
+            telegram.notify_heartbeat(
+                mode=runtime.mode,
+                date_utc=today_utc,
+                equity=state.equity,
+                initial_capital=state.initial_capital,
+                pnl_today=state.realized_pnl_today,
+                pnl_week=state.realized_pnl_week,
+                open_positions=len(state.open_positions),
+                total_trades=state.total_trades,
+                cycle_errors=cycle_errors,
+            )
+
         sleep_seconds = _resolve_sleep_seconds(
             poll_result.next_poll_after_ms,
             now_ms=int(time_fn() * 1000),
@@ -158,6 +195,62 @@ def run_paper_runtime_loop(
         cycle_errors=cycle_errors,
         last_state_path=state_path,
     )
+
+
+def _notify_trade_events(
+    *,
+    telegram: TelegramNotifier,
+    mode: str,
+    opened_symbols: list[str],
+    closed_symbols: list[str],
+    positions_before: dict,
+    state: object,
+    events: list[str],
+) -> None:
+    from src.live.paper_engine import PaperState  # local import to avoid circularity
+
+    if not isinstance(state, PaperState):
+        return
+
+    for symbol in opened_symbols:
+        pos = state.open_positions.get(symbol)
+        if pos is None:
+            continue
+        risk_usdt = pos.risk_pct * state.equity
+        telegram.notify_trade_opened(
+            mode=mode,
+            symbol=symbol,
+            side=pos.side,
+            entry_price=pos.entry_price,
+            stop_price=pos.stop_price,
+            tp1_price=pos.tp1_price,
+            tp2_price=pos.tp2_price,
+            risk_pct=pos.risk_pct,
+            risk_usdt=risk_usdt,
+            equity=state.equity,
+        )
+
+    for symbol in closed_symbols:
+        pos_before = positions_before.get(symbol)
+        if pos_before is None:
+            continue
+        close_events = [e for e in events if e.startswith(f"CLOSE {symbol}")]
+        pnl = float(close_events[0].split("net_total=")[1].split()[0]) if close_events else 0.0
+        exit_notes = [
+            e.split(f"EXIT {symbol} ")[1].split(" qty=")[0]
+            for e in events
+            if e.startswith(f"EXIT {symbol}")
+        ]
+        telegram.notify_trade_closed(
+            mode=mode,
+            symbol=symbol,
+            side=pos_before.side,
+            pnl_net_usdt=pnl,
+            equity=state.equity,
+            total_trades=state.total_trades,
+            winning_trades=state.winning_trades,
+            exit_notes=exit_notes,
+        )
 
 
 def _resolve_sleep_seconds(
